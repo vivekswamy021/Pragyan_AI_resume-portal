@@ -411,29 +411,30 @@ def cv_management_tab_content():
     current_year = date.today().year
     
     # --- CV Builder Form (SINGLE BLOCK) ---
+    # This form collects all static data and triggers the submission logic
     with st.form("cv_builder_form", clear_on_submit=False):
-        st.subheader("Personal, Contact, and Summary Details")
         
-        # --- PERSONAL & CONTACT DETAILS ---
+        # --- 1. PERSONAL & CONTACT DETAILS ---
+        st.subheader("1. Personal, Contact, and Summary Details")
         col1, col2, col3 = st.columns(3)
         with col1:
             st.session_state.cv_form_data['name'] = st.text_input(
                 "Full Name", 
                 value=st.session_state.cv_form_data['name'], 
                 key="cv_name_input"
-            ).strip() # Strip on read
+            ).strip() 
         with col2:
             st.session_state.cv_form_data['email'] = st.text_input(
                 "Email Address", 
                 value=st.session_state.cv_form_data['email'], 
                 key="cv_email_input"
-            ).strip() # Strip on read
+            ).strip() 
         with col3:
             st.session_state.cv_form_data['phone'] = st.text_input(
                 "Phone Number", 
                 value=st.session_state.cv_form_data['phone'], 
                 key="cv_phone_input"
-            ).strip() # Strip on read
+            ).strip() 
         
         col4, col5 = st.columns(2)
         with col4:
@@ -441,37 +442,47 @@ def cv_management_tab_content():
                 "LinkedIn Profile URL", 
                 value=st.session_state.cv_form_data.get('linkedin', ''), 
                 key="cv_linkedin_input"
-            ).strip() # Strip on read
+            ).strip() 
         with col5:
             st.session_state.cv_form_data['github'] = st.text_input(
                 "GitHub Profile URL", 
                 value=st.session_state.cv_form_data.get('github', ''), 
                 key="cv_github_input"
-            ).strip() # Strip on read
+            ).strip() 
         
-        st.markdown("---")
-        st.subheader("Summary / Personal Details")
         st.session_state.cv_form_data['personal_details'] = st.text_area(
             "Professional Summary (A brief pitch about yourself)", 
             value=st.session_state.cv_form_data.get('personal_details', ''), 
             height=100,
             key="cv_personal_details_input"
-        ).strip() # Strip on read
+        ).strip() 
         
-        # --- SKILLS & PROJECTS (Now inside the single form) ---
+        # --- 2. SKILLS (Now inside the single form) ---
         st.markdown("---")
-        st.subheader("Skills, Projects, & Strengths (One Item per Line)")
+        st.subheader("2. Key Skills (One Item per Line)")
 
         skills_text = "\n".join(st.session_state.cv_form_data.get('skills', []) if all(isinstance(s, str) for s in st.session_state.cv_form_data.get('skills', [])) else [])
         new_skills_text = st.text_area(
-            "Key Skills (Technical and Soft)", 
+            "Technical and Soft Skills", 
             value=skills_text,
             height=100,
-            key="cv_skills_input_form" # New key to avoid conflict if the old one was outside
+            key="cv_skills_input_form" 
         )
         # Update session state on submit
         st.session_state.cv_form_data['skills'] = [s.strip() for s in new_skills_text.split('\n') if s.strip()]
         
+        # --- 3. DYNAMIC SECTIONS PLACEHOLDER (Instruct user to use external forms) ---
+        st.markdown("---")
+        st.subheader("3. Education Details")
+        st.info("⚠️ **Education** is managed using the dynamic 'Add Entry' form *outside* this main form below. The data will be captured when you click the 'Generate and Load' button at the end.")
+        
+        st.markdown("---")
+        st.subheader("4. Certifications")
+        st.info("⚠️ **Certifications** are managed using the dynamic 'Add Certificate' form *outside* this main form below. The data will be captured when you click the 'Generate and Load' button at the end.")
+        
+        # --- 5. PROJECTS (Now inside the single form) ---
+        st.markdown("---")
+        st.subheader("5. Projects (One Item per Line)")
         projects_text = "\n".join(st.session_state.cv_form_data.get('projects', []) if all(isinstance(p, str) for p in st.session_state.cv_form_data.get('projects', [])) else [])
         new_projects_text = st.text_area(
             "Projects (Name, Description, Technologies)", 
@@ -480,19 +491,28 @@ def cv_management_tab_content():
             key="cv_projects_input_form"
         )
         st.session_state.cv_form_data['projects'] = [p.strip() for p in new_projects_text.split('\n') if p.strip()]
-        
+
+        # --- 6. STRENGTHS (Now inside the single form) ---
+        st.markdown("---")
+        st.subheader("6. Strengths (One Item per Line)")
         strength_text = "\n".join(st.session_state.cv_form_data.get('strength', []) if all(isinstance(s, str) for s in st.session_state.cv_form_data.get('strength', [])) else [])
         new_strength_text = st.text_area(
-            "Strengths / Key Personal Qualities (One per line)", 
+            "Key Personal Qualities", 
             value=strength_text,
             height=70,
             key="cv_strength_input_form"
         )
         st.session_state.cv_form_data['strength'] = [s.strip() for s in new_strength_text.split('\n') if s.strip()]
+
+        # --- 7. EXPERIENCE PLACEHOLDER (Instruct user to use external forms) ---
+        st.markdown("---")
+        st.subheader("7. Professional Experience")
+        st.info("⚠️ **Experience** is managed using the dynamic 'Add Experience' form *outside* this main form below. The data will be captured when you click the 'Generate and Load' button at the end.")
         
         # CRITICAL: The submit button is ONLY placed here, inside the one form block.
         st.markdown("---")
-        st.warning("Ensure you have added your **Education, Certifications, and Experience** entries using the dynamic forms below before submitting.")
+        st.subheader("8. Generate or Load ALL CV Data")
+        st.warning("Ensure you have added your **Education, Certifications, and Experience** entries using the dynamic forms below this main form, then click below to finalize.")
         submit_form_button = st.form_submit_button("Generate and Load ALL CV Data", type="primary", use_container_width=True)
 
     
@@ -503,7 +523,7 @@ def cv_management_tab_content():
             return
 
         # 1. Synchronize the structured lists into the main keys for AI consumption
-        # NOTE: This happens ON SUBMIT, pulling the latest data from the lists managed OUTSIDE the form.
+        # NOTE: This pulls the latest data from the lists managed OUTSIDE the form.
         st.session_state.cv_form_data['experience'] = st.session_state.cv_form_data.get('structured_experience', [])
         st.session_state.cv_form_data['certifications'] = st.session_state.cv_form_data.get('structured_certifications', [])
         st.session_state.cv_form_data['education'] = st.session_state.cv_form_data.get('structured_education', [])
@@ -539,10 +559,9 @@ def cv_management_tab_content():
         st.success(f"✅ CV data for **{st.session_state.parsed['name']}** successfully generated and loaded! All major sections are stored as **structured data**.")
         
     
-    # --- DYNAMIC EDUCATION SECTION (OUTSIDE the main form) ---
-    # These sections manage list state and buttons, causing reruns, so they MUST be outside the st.form()
+    # --- DYNAMIC EDUCATION SECTION (OUTSIDE the main form - Corresponds to Section 3) ---
     st.markdown("---")
-    st.subheader("🎓 Education Details")
+    st.subheader("🎓 **Dynamic Education Management**")
     st.markdown("Use the fields below to add structured education entries one by one.")
     
     # Function to handle adding the education entry
@@ -684,13 +703,13 @@ def cv_management_tab_content():
                 
                 st.button("❌ Remove", key=f"remove_edu_{i}", on_click=remove_education_entry, args=(i,), type="secondary") 
     else:
-        st.info("No education entries added yet. Use the form above to add one.")
+        st.info("No education entries added yet.")
 
 
     
-    # --- DYNAMIC CERTIFICATION SECTION (OUTSIDE the main form) ---
+    # --- DYNAMIC CERTIFICATION SECTION (OUTSIDE the main form - Corresponds to Section 4) ---
     st.markdown("---")
-    st.subheader("🏅 Certifications")
+    st.subheader("🏅 **Dynamic Certifications Management**")
     st.markdown("Use the fields below to add structured certification entries one by one.")
     
     # Function to handle adding the certification entry
@@ -770,12 +789,12 @@ def cv_management_tab_content():
                 
                 st.button("❌ Remove", key=f"remove_cert_{i}", on_click=remove_certification_entry, args=(i,), type="secondary") 
     else:
-        st.info("No certifications added yet. Use the form above to add one.")
+        st.info("No certifications added yet.")
 
     
-    # --- DYNAMIC EXPERIENCE SECTION (OUTSIDE the main form) ---
+    # --- DYNAMIC EXPERIENCE SECTION (OUTSIDE the main form - Corresponds to Section 7) ---
     st.markdown("---")
-    st.subheader("💼 Professional Experience")
+    st.subheader("💼 **Dynamic Professional Experience Management**")
     st.markdown("Use the fields below to add structured experience entries one by one.")
     
     # Function to handle adding the experience entry
@@ -912,11 +931,11 @@ def cv_management_tab_content():
                 
                 st.button("❌ Remove", key=f"remove_exp_{i}", on_click=remove_experience_entry, args=(i,), type="secondary") 
     else:
-        st.info("No experience entries added yet. Use the form above to add one.")
+        st.info("No experience entries added yet.")
     
     # --- CV Preview and Download ---
     st.markdown("---")
-    st.subheader("2. Loaded CV Data Preview and Download")
+    st.subheader("9. Loaded CV Data Preview and Download")
     
     if st.session_state.get('parsed', {}).get('name') and st.session_state.parsed.get('name') != "":
         
