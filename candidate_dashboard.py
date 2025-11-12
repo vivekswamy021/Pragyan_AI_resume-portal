@@ -24,25 +24,6 @@ def clear_interview_state():
     st.session_state.evaluation_report = ""
     st.toast("Practice answers cleared.")
     
-def generate_education_string(entry: Dict[str, str]) -> str:
-    """Formats a structured education entry into a single string for storage."""
-    # This function is retained but less critical now that we use text areas
-    degree = entry.get('degree', 'N/A')
-    college = entry.get('college', 'N/A')
-    university = entry.get('university', 'N/A')
-    from_year = entry.get('from_year', 'N/A')
-    to_year = entry.get('to_year', 'Present')
-    
-    if from_year == to_year:
-        duration = f"({from_year})"
-    elif from_year and to_year and from_year != 'N/A' and to_year != 'N/A':
-        duration = f"({from_year} - {to_year})"
-    else:
-        duration = ""
-
-    # Example format: "M.Sc. Computer Science (2016 - 2018) | University of Excellence | City University"
-    return f"{degree} {duration} | {college} | {university}"
-
 def generate_experience_string(entry: Dict[str, Any]) -> str:
     """Formats a structured experience entry into a single string for storage."""
     company = entry.get('company', 'N/A')
@@ -63,16 +44,6 @@ def generate_experience_string(entry: Dict[str, Any]) -> str:
         f"**CTC:** {ctc}. "
         f"**Responsibilities:** {responsibilities.replace('\n', ' ')}"
     )
-
-def generate_certification_string(entry: Dict[str, str]) -> str:
-    """Formats a structured certification entry into a single string for storage."""
-    # This function is retained but less critical now that we use text areas
-    title = entry.get('title', 'N/A')
-    issuing_body = entry.get('issuing_body', 'N/A')
-    issue_date = entry.get('issue_date', 'N/A')
-    
-    # Example format: "AWS Certified Cloud Practitioner (Amazon Web Services) - Issued: 2023-10-01"
-    return f"**{title}** ({issuing_body}) - Issued: {issue_date}"
 
 # --- External LLM/File Logic (Simplified or Stubbed for standalone copy) ---
 question_section_options = ["skills","experience", "certifications", "projects", "education"]
@@ -305,7 +276,6 @@ def cv_management_tab_content():
             st.session_state.cv_form_data = st.session_state.parsed.copy()
             # Ensure the structured experience list is present if loading from parsed data
             if 'structured_experience' not in st.session_state.cv_form_data:
-                # If experience is only a list of strings, initialize structured_experience as empty
                 st.session_state.cv_form_data['structured_experience'] = [] 
         else:
             st.session_state.cv_form_data = default_parsed
@@ -317,8 +287,12 @@ def cv_management_tab_content():
          st.session_state.cv_form_data['certifications'] = []
     if 'structured_experience' not in st.session_state.cv_form_data:
          st.session_state.cv_form_data['structured_experience'] = []
+    
+    # Initialize/reset temp_experience_data structure
     if 'temp_experience_data' not in st.session_state:
-         st.session_state.temp_experience_data = {} # Used for the Add Experience fields
+         st.session_state.temp_experience_data = {
+             "company": "", "role": "", "from_year": "", "to_year": "Present", "ctc": "", "responsibilities": ""
+         }
 
     
     # --- CV Builder Form (Main Sections - excluding dynamic parts) ---
@@ -438,10 +412,13 @@ def cv_management_tab_content():
     # Function to handle adding the experience entry
     def add_experience_entry():
         exp_data = st.session_state.temp_experience_data
+        
+        # Validation
         if not exp_data.get('company') or not exp_data.get('role') or not exp_data.get('from_year'):
-            st.error("Please fill in Company, Role, and From Year.")
+            st.error("Please fill in **Company**, **Role**, and **From Year**.")
             return
 
+        # Create new entry
         new_entry = {
             "company": exp_data.get('company', ''),
             "role": exp_data.get('role', ''),
@@ -451,9 +428,14 @@ def cv_management_tab_content():
             "responsibilities": exp_data.get('responsibilities', '')
         }
         
+        # Append to the structured list
         st.session_state.cv_form_data['structured_experience'].append(new_entry)
+        
         # Clear temp state to refresh the input fields
-        st.session_state.temp_experience_data = {}
+        st.session_state.temp_experience_data = {
+            "company": "", "role": "", "from_year": "", "to_year": "Present", "ctc": "", "responsibilities": ""
+        }
+        
         st.toast(f"Experience at {new_entry['company']} added.")
         
     def remove_experience_entry(index):
@@ -465,25 +447,76 @@ def cv_management_tab_content():
     # Input fields for a single experience entry
     with st.container(border=True):
         st.markdown("##### Add New Experience Entry")
+        
+        # Use a consistent current value from the temp state for proper key-value synchronization
+        temp_data = st.session_state.temp_experience_data
+        
         col_c, col_r = st.columns(2)
         with col_c:
-            st.text_input("Company Name", key="temp_experience_data[company]", placeholder="e.g., Google")
+            # FIX: Use a simple key and update the dictionary in session state.
+            company_val = st.text_input(
+                "Company Name", 
+                value=temp_data.get('company', ''), # Use value from temp state
+                key="temp_exp_company_key", 
+                placeholder="e.g., Google"
+            )
+            temp_data['company'] = company_val
+            
         with col_r:
-            st.text_input("Role/Title", key="temp_experience_data[role]", placeholder="e.g., Data Scientist")
+            # FIX: Use a simple key and update the dictionary in session state.
+            role_val = st.text_input(
+                "Role/Title", 
+                value=temp_data.get('role', ''), # Use value from temp state
+                key="temp_exp_role_key", 
+                placeholder="e.g., Data Scientist"
+            )
+            temp_data['role'] = role_val
 
         col_fy, col_ty, col_c3 = st.columns(3)
         current_year = date.today().year
         year_options = [str(y) for y in range(current_year, 1950, -1)]
         
         with col_fy:
-            st.selectbox("From Year", options=year_options, key="temp_experience_data[from_year]", index=0)
+            # FIX: Use a simple key and update the dictionary in session state.
+            from_year_val = st.selectbox(
+                "From Year", 
+                options=year_options, 
+                index=year_options.index(temp_data['from_year']) if temp_data['from_year'] in year_options else 0, # Set current value
+                key="temp_exp_from_year_key"
+            )
+            temp_data['from_year'] = from_year_val
+            
         with col_ty:
-            st.selectbox("To Year", options=["Present"] + year_options, key="temp_experience_data[to_year]", index=0)
+            # FIX: Use a simple key and update the dictionary in session state.
+            to_year_options = ["Present"] + year_options
+            to_year_val = st.selectbox(
+                "To Year", 
+                options=to_year_options, 
+                index=to_year_options.index(temp_data['to_year']) if temp_data['to_year'] in to_year_options else 0, # Set current value
+                key="temp_exp_to_year_key"
+            )
+            temp_data['to_year'] = to_year_val
+            
         with col_c3:
-            st.text_input("CTC (Annual)", key="temp_experience_data[ctc]", placeholder="e.g., $150k / 20L INR")
+            # FIX: Use a simple key and update the dictionary in session state.
+            ctc_val = st.text_input(
+                "CTC (Annual)", 
+                value=temp_data.get('ctc', ''), # Use value from temp state
+                key="temp_exp_ctc_key", 
+                placeholder="e.g., $150k / 20L INR"
+            )
+            temp_data['ctc'] = ctc_val
 
-        st.text_area("Key Responsibilities/Achievements (Brief summary)", height=70, key="temp_experience_data[responsibilities]")
+        # FIX: Use a simple key and update the dictionary in session state.
+        responsibilities_val = st.text_area(
+            "Key Responsibilities/Achievements (Brief summary)", 
+            value=temp_data.get('responsibilities', ''), # Use value from temp state
+            height=70, 
+            key="temp_exp_responsibilities_key"
+        )
+        temp_data['responsibilities'] = responsibilities_val
         
+        # Button triggers the `add_experience_entry` function
         st.button("➕ Add This Experience", on_click=add_experience_entry, use_container_width=True, type="secondary")
 
     # Display current experience entries
@@ -775,8 +808,12 @@ def candidate_dashboard():
             "projects": [], "strength": [], "personal_details": "",
             "structured_experience": [] # New key for dynamic experience
         }
+    
+    # Ensure temp experience data is initialized
     if 'temp_experience_data' not in st.session_state:
-         st.session_state.temp_experience_data = {}
+         st.session_state.temp_experience_data = {
+            "company": "", "role": "", "from_year": "", "to_year": "Present", "ctc": "", "responsibilities": ""
+        }
         
     if "candidate_filter_skills_multiselect" not in st.session_state:
         st.session_state.candidate_filter_skills_multiselect = []
@@ -1316,15 +1353,13 @@ def candidate_dashboard():
 # ==============================================================================
 
 if __name__ == '__main__':
-    # Add a login/landing page if needed, otherwise, run the dashboard directly
-    # A simple example:
+    # Simple placeholder for a 'login' or landing page
     if 'page' not in st.session_state:
         st.session_state.page = "dashboard"
     
     if st.session_state.page == "dashboard":
         candidate_dashboard()
     else:
-        # Simple placeholder for a 'login' or landing page
         st.title("Welcome to the Candidate Dashboard")
         if st.button("Start Dashboard"):
             st.session_state.page = "dashboard"
