@@ -452,7 +452,7 @@ def cv_management_tab_content():
         # By setting the key values to "" in session state, the widgets with these keys reset on rerun
         st.session_state["temp_exp_company_key"] = ""
         st.session_state["temp_exp_role_key"] = ""
-        st.session_state["temp_exp_from_year_key"] = ""
+        st.session_state["temp_exp_from_year_key"] = str(date.today().year) # Reset to default year
         st.session_state["temp_exp_to_year_key"] = "Present" # Selectbox resets based on index/value
         st.session_state["temp_exp_ctc_key"] = ""
         st.session_state["temp_exp_responsibilities_key"] = ""
@@ -473,8 +473,6 @@ def cv_management_tab_content():
         st.markdown("##### Add New Experience Entry")
         
         # CRITICAL: We now use the dedicated key (temp_exp_***_key) to manage the state of the widget.
-        # The 'value' argument is not needed when using a key, but we set the session state value
-        # prior to calling the widget to reset it (see add_experience_entry).
         
         col_c, col_r = st.columns(2)
         with col_c:
@@ -501,7 +499,11 @@ def cv_management_tab_content():
         
         with col_fy:
             from_year_options = year_options
-            from_year_index = from_year_options.index(current_from_year) if current_from_year in from_year_options else 0
+            # Ensure index is within bounds, or default to 0
+            try:
+                from_year_index = from_year_options.index(current_from_year) 
+            except ValueError:
+                from_year_index = 0
             
             st.selectbox(
                 "From Year", 
@@ -512,7 +514,11 @@ def cv_management_tab_content():
             
         with col_ty:
             to_year_options = ["Present"] + year_options
-            to_year_index = to_year_options.index(current_to_year) if current_to_year in to_year_options else 0
+            # Ensure index is within bounds, or default to 0
+            try:
+                to_year_index = to_year_options.index(current_to_year)
+            except ValueError:
+                to_year_index = 0
             
             st.selectbox(
                 "To Year", 
@@ -552,8 +558,8 @@ def cv_management_tab_content():
                 col_disp_3.markdown(f"**CTC:** {entry['ctc']}")
                 st.markdown(f"**Responsibilities:** {entry['responsibilities']}")
                 
-                # Ensure the button key is unique (it is now with f"remove_exp_{i}")
-                st.button("❌ Remove", key=f"remove_exp_{i}", on_click=remove_experience_entry, args=(i,), type="danger")
+                # FIX APPLIED HERE: Changed type="danger" to type="secondary"
+                st.button("❌ Remove", key=f"remove_exp_{i}", on_click=remove_experience_entry, args=(i,), type="secondary") 
     else:
         st.info("No experience entries added yet. Use the form above to add one.")
         
@@ -867,7 +873,8 @@ def candidate_dashboard():
             st.info("Please upload a file or use the CV builder.")
             
         st.markdown("---")
-        if st.button("🚪 Log Out", key="candidate_logout_btn", use_container_width=True):
+        # FIX APPLIED HERE: Changed type="danger" to type="secondary"
+        if st.button("🚪 Log Out", key="candidate_logout_btn", use_container_width=True, type="secondary"): 
             go_to("login") 
     # --- END NAVIGATION BLOCK ---
     
@@ -1084,7 +1091,8 @@ def candidate_dashboard():
                 st.markdown("### ✅ Current JDs Added:")
                 
             with col_clear_button:
-                if st.button("🗑️ Clear All JDs", key="clear_jds_candidate", use_container_width=True, help="Removes all currently loaded JDs."):
+                # FIX APPLIED HERE: Changed type="danger" to type="secondary"
+                if st.button("🗑️ Clear All JDs", key="clear_jds_candidate", use_container_width=True, help="Removes all currently loaded JDs.", type="secondary"): 
                     st.session_state.candidate_jd_list = []
                     st.session_state.candidate_match_results = [] 
                     st.session_state.filtered_jds_display = [] 
@@ -1130,7 +1138,7 @@ def candidate_dashboard():
                 if jd_item['name'] in selected_jd_names
             ]
             
-            if st.button(f"Run Match Analysis on {len(jds_to_match)} Selected JD(s)", key='run_match_analysis_btn'): 
+            if st.button(f"Run Match Analysis on {len(jds_to_match)} Selected JD(s)", key='run_match_analysis_btn', type="primary"): 
                 st.session_state.candidate_match_results = []
                 
                 if not jds_to_match:
@@ -1356,7 +1364,8 @@ def candidate_dashboard():
                         st.session_state.interview_qa[i]['answer'] = answer 
                         st.markdown("---") 
                         
-                    submit_button = st.form_submit_button("Submit & Evaluate Answers", use_container_width=True)
+                    # FIX APPLIED HERE: Changed type="danger" to type="secondary"
+                    submit_button = st.form_submit_button("Submit & Evaluate Answers", use_container_width=True, type="secondary")
 
                     if submit_button:
                         if all(item['answer'].strip() for item in st.session_state.interview_qa):
