@@ -301,19 +301,19 @@ def cv_management_tab_content():
             st.session_state.cv_form_data['name'] = st.text_input(
                 "Full Name", 
                 value=st.session_state.cv_form_data['name'], 
-                key="cv_name"
+                key="cv_name_input" # Changed key
             )
         with col2:
             st.session_state.cv_form_data['email'] = st.text_input(
                 "Email Address", 
                 value=st.session_state.cv_form_data['email'], 
-                key="cv_email"
+                key="cv_email_input" # Changed key
             )
         with col3:
             st.session_state.cv_form_data['phone'] = st.text_input(
                 "Phone Number", 
                 value=st.session_state.cv_form_data['phone'], 
-                key="cv_phone"
+                key="cv_phone_input" # Changed key
             )
         
         col4, col5 = st.columns(2)
@@ -321,13 +321,13 @@ def cv_management_tab_content():
             st.session_state.cv_form_data['linkedin'] = st.text_input(
                 "LinkedIn Profile URL", 
                 value=st.session_state.cv_form_data.get('linkedin', ''), 
-                key="cv_linkedin"
+                key="cv_linkedin_input" # Changed key
             )
         with col5:
             st.session_state.cv_form_data['github'] = st.text_input(
                 "GitHub Profile URL", 
                 value=st.session_state.cv_form_data.get('github', ''), 
-                key="cv_github"
+                key="cv_github_input" # Changed key
             )
         
         st.markdown("---")
@@ -336,7 +336,7 @@ def cv_management_tab_content():
             "Professional Summary or Personal Details (e.g., date of birth, address, nationality)", 
             value=st.session_state.cv_form_data.get('personal_details', ''), 
             height=100,
-            key="cv_personal_details"
+            key="cv_personal_details_input" # Changed key
         )
         
         st.markdown("---")
@@ -347,7 +347,7 @@ def cv_management_tab_content():
             "Key Skills (Technical and Soft)", 
             value=skills_text,
             height=100,
-            key="cv_skills"
+            key="cv_skills_input" # Changed key
         )
         st.session_state.cv_form_data['skills'] = [s.strip() for s in new_skills_text.split('\n') if s.strip()]
         
@@ -356,7 +356,7 @@ def cv_management_tab_content():
             "Projects (Name, Description, Technologies)", 
             value=projects_text,
             height=100,
-            key="cv_projects"
+            key="cv_projects_input" # Changed key
         )
         st.session_state.cv_form_data['projects'] = [p.strip() for p in new_projects_text.split('\n') if p.strip()]
         
@@ -365,7 +365,7 @@ def cv_management_tab_content():
             "Strengths / Key Personal Qualities (One per line)", 
             value=strength_text,
             height=70,
-            key="cv_strength"
+            key="cv_strength_input" # Changed key
         )
         st.session_state.cv_form_data['strength'] = [s.strip() for s in new_strength_text.split('\n') if s.strip()]
 
@@ -388,7 +388,7 @@ def cv_management_tab_content():
             with col_entry:
                 st.markdown(f"**{i+1}.** {entry}")
             with col_delete:
-                if st.button("🗑️", key=f"delete_cert_{original_index}"):
+                if st.button("🗑️", key=f"delete_cert_{original_index}_cvmgmt"):
                     st.session_state.cv_form_data['certifications'].pop(original_index)
                     st.success("Entry deleted. Click 'Generate and Load ALL CV Data' to save changes.")
                     st.rerun() 
@@ -398,17 +398,19 @@ def cv_management_tab_content():
     with st.form("certifications_add_form"):
         col_t, col_b = st.columns(2)
         with col_t:
-            title = st.text_input("Certification Title (e.g., PMP, AWS Certified)", key="cert_title")
+            # FIX: Added _form suffix to distinguish keys from potential main form inputs
+            title = st.text_input("Certification Title (e.g., PMP, AWS Certified)", key="cert_title_form")
         with col_b:
-            issuing_body = st.text_input("Issuing Body (e.g., PMI, Amazon Web Services)", key="cert_issuing_body")
+            # FIX: Added _form suffix
+            issuing_body = st.text_input("Issuing Body (e.g., PMI, Amazon Web Services)", key="cert_issuing_body_form")
             
         col_d, _ = st.columns(2)
         with col_d:
-            # Using a date picker for accurate date of issued
+            # FIX: Added _form suffix
             issue_date_st = st.date_input(
                 "Date Issued", 
                 value=None, 
-                key="cert_date_issued", 
+                key="cert_date_issued_form", # FIX: Renamed key to avoid conflict with initial state if any
                 max_value=date.today(),
                 help="Select the date the certification was issued."
             )
@@ -434,10 +436,11 @@ def cv_management_tab_content():
                 st.session_state.cv_form_data['certifications'].append(new_entry_string)
                 st.success(f"Certification entry added: {title}. Click 'Generate and Load ALL CV Data' above to use it for AI tools.")
                 
-                # Clear the certification form fields by using a temporary state update and rerun
-                st.session_state.cert_title = ""
-                st.session_state.cert_issuing_body = ""
-                st.session_state.cert_date_issued = None # Resetting date input is tricky, easier to just rely on re-run
+                # Clear the form fields explicitly by referencing the form widget keys
+                st.session_state.cert_title_form = ""
+                st.session_state.cert_issuing_body_form = ""
+                # Streamlit often retains date input state unless specifically handled or on a full rerun
+                # Rerunning is the simplest way to clear the form visually after success
                 st.rerun() 
             else:
                 st.error("Please fill in **Certification Title**, **Issuing Body**, and **Date Issued**.")
@@ -458,7 +461,7 @@ def cv_management_tab_content():
             with col_entry:
                 st.markdown(f"**{i+1}.** {entry}")
             with col_delete:
-                if st.button("🗑️", key=f"delete_exp_{original_index}"):
+                if st.button("🗑️", key=f"delete_exp_{original_index}_cvmgmt"):
                     st.session_state.cv_form_data['experience'].pop(original_index)
                     st.success("Entry deleted. Click 'Generate and Load ALL CV Data' to save changes.")
                     st.rerun() 
@@ -468,21 +471,22 @@ def cv_management_tab_content():
     with st.form("experience_add_form"):
         col_c, col_r = st.columns(2)
         with col_c:
-            company = st.text_input("Company Name", key="exp_company")
+            # FIX: Added _form suffix to experience keys
+            company = st.text_input("Company Name", key="exp_company_form")
         with col_r:
-            role = st.text_input("Role / Job Title", key="exp_role")
+            role = st.text_input("Role / Job Title", key="exp_role_form")
             
         col_f, col_t, col_ctc = st.columns(3)
         with col_f:
-            from_year = st.text_input("From Year (e.g., 2020)", key="exp_from_year", max_chars=4)
+            from_year = st.text_input("From Year (e.g., 2020)", key="exp_from_year_form", max_chars=4)
         with col_t:
-            to_year = st.text_input("To Year (e.g., 2024 or Present)", key="exp_to_year", max_chars=7)
+            to_year = st.text_input("To Year (e.g., 2024 or Present)", key="exp_to_year_form", max_chars=7)
         with col_ctc:
-            ctc = st.text_input("Current/Last CTC (e.g., $120k or 15 LPA)", key="exp_ctc")
+            ctc = st.text_input("Current/Last CTC (e.g., $120k or 15 LPA)", key="exp_ctc_form")
             
         responsibilities = st.text_area(
             "Key Responsibilities (3-5 bullet points recommended, separate by semicolon ';' or just one line)",
-            key="exp_responsibilities",
+            key="exp_responsibilities_form",
             height=100
         )
             
@@ -512,13 +516,13 @@ def cv_management_tab_content():
                 st.session_state.cv_form_data['experience'].append(new_entry_string)
                 st.success(f"Experience entry added: {new_entry_string}. Click 'Generate and Load ALL CV Data' above to use it for AI tools.")
                 
-                # Clear the experience form fields by using a temporary state update and rerun
-                st.session_state.exp_company = ""
-                st.session_state.exp_role = ""
-                st.session_state.exp_from_year = ""
-                st.session_state.exp_to_year = ""
-                st.session_state.exp_ctc = ""
-                st.session_state.exp_responsibilities = ""
+                # Clear the experience form fields by referencing the form widget keys
+                st.session_state.exp_company_form = ""
+                st.session_state.exp_role_form = ""
+                st.session_state.exp_from_year_form = ""
+                st.session_state.exp_to_year_form = ""
+                st.session_state.exp_ctc_form = ""
+                st.session_state.exp_responsibilities_form = ""
                 st.rerun() 
             else:
                 st.error("Please fill in at least **Company Name**, **Role**, **From Year**, and **Key Responsibilities**.")
@@ -535,7 +539,7 @@ def cv_management_tab_content():
             with col_entry:
                 st.markdown(f"**{i+1}.** {entry}")
             with col_delete:
-                if st.button("🗑️", key=f"delete_edu_{i}"):
+                if st.button("🗑️", key=f"delete_edu_{i}_cvmgmt"):
                     st.session_state.cv_form_data['education'].pop(i)
                     st.success("Entry deleted. Click 'Generate and Load ALL CV Data' to save changes.")
                     st.rerun() 
@@ -545,17 +549,18 @@ def cv_management_tab_content():
     with st.form("education_add_form"):
         col_d, col_c = st.columns(2)
         with col_d:
-            degree = st.text_input("Degree / Qualification", key="edu_degree")
+            # FIX: Added _form suffix to education keys
+            degree = st.text_input("Degree / Qualification", key="edu_degree_form")
         with col_c:
-            college = st.text_input("College / Institution Name", key="edu_college")
+            college = st.text_input("College / Institution Name", key="edu_college_form")
             
         col_u, col_f, col_t = st.columns(3)
         with col_u:
-            university = st.text_input("University / Board", key="edu_university")
+            university = st.text_input("University / Board", key="edu_university_form")
         with col_f:
-            from_year = st.text_input("From Year (e.g., 2014)", key="edu_from_year", max_chars=4)
+            from_year = st.text_input("From Year (e.g., 2014)", key="edu_from_year_form", max_chars=4)
         with col_t:
-            to_year = st.text_input("To Year (e.g., 2018 or Present)", key="edu_to_year", max_chars=7)
+            to_year = st.text_input("To Year (e.g., 2018 or Present)", key="edu_to_year_form", max_chars=7)
             
         # Button logic executed AFTER the form submission
         add_edu_button = st.form_submit_button("➕ Add Education Entry", use_container_width=True)
@@ -582,12 +587,12 @@ def cv_management_tab_content():
                 st.session_state.cv_form_data['education'].append(new_entry_string)
                 st.success(f"Education entry added: {new_entry_string}. Click 'Generate and Load ALL CV Data' above to use it for AI tools.")
                 
-                # Clear the education form fields by using a temporary state update and rerun
-                st.session_state.edu_degree = ""
-                st.session_state.edu_college = ""
-                st.session_state.edu_university = ""
-                st.session_state.edu_from_year = ""
-                st.session_state.edu_to_year = ""
+                # Clear the education form fields by referencing the form widget keys
+                st.session_state.edu_degree_form = ""
+                st.session_state.edu_college_form = ""
+                st.session_state.edu_university_form = ""
+                st.session_state.edu_from_year_form = ""
+                st.session_state.edu_to_year_form = ""
                 st.rerun() 
             else:
                 st.error("Please fill in at least Degree, College/Institution, and From Year for the education entry.")
@@ -853,25 +858,11 @@ def candidate_dashboard():
             "projects": [], "strength": [], "personal_details": ""
         }
         
-    # Initialize fields for the dynamic education form
-    if "edu_degree" not in st.session_state: st.session_state.edu_degree = ""
-    if "edu_college" not in st.session_state: st.session_state.edu_college = ""
-    if "edu_university" not in st.session_state: st.session_state.edu_university = ""
-    if "edu_from_year" not in st.session_state: st.session_state.edu_from_year = ""
-    if "edu_to_year" not in st.session_state: st.session_state.edu_to_year = ""
-    
-    # Initialize fields for the dynamic experience form
-    if "exp_company" not in st.session_state: st.session_state.exp_company = ""
-    if "exp_role" not in st.session_state: st.session_state.exp_role = ""
-    if "exp_from_year" not in st.session_state: st.session_state.exp_from_year = ""
-    if "exp_to_year" not in st.session_state: st.session_state.exp_to_year = ""
-    if "exp_ctc" not in st.session_state: st.session_state.exp_ctc = ""
-    if "exp_responsibilities" not in st.session_state: st.session_state.exp_responsibilities = ""
-
-    # Initialize fields for the new dynamic certifications form
-    if "cert_title" not in st.session_state: st.session_state.cert_title = ""
-    if "cert_issuing_body" not in st.session_state: st.session_state.cert_issuing_body = ""
-    # Note: st.date_input is handled inside the form, no direct state initialization needed besides its form key
+    # FIX: Clean up/remove unnecessary state initializations 
+    # The form keys (e.g., edu_degree_form) are used directly by the widgets and don't need 
+    # to be initialized here unless they need an initial value outside of the form.
+    # The simple st.session_state.edu_degree = "" type entries from the previous code 
+    # are removed to prevent key conflicts with the new form keys.
     
     if "candidate_filter_skills_multiselect" not in st.session_state:
         st.session_state.candidate_filter_skills_multiselect = []
@@ -965,7 +956,7 @@ def candidate_dashboard():
             st.markdown("### 2. Parse Uploaded File")
             
             if file_to_parse:
-                if st.button(f"Parse and Load: **{file_to_parse.name}**", use_container_width=True):
+                if st.button(f"Parse and Load: **{file_to_parse.name}**", key="parse_file_btn", use_container_width=True): # FIX: Added key
                     with st.spinner(f"Parsing {file_to_parse.name}..."):
                         result = parse_and_store_resume(file_to_parse, file_name_key='single_resume_candidate', source_type='file')
                         
@@ -999,7 +990,7 @@ def candidate_dashboard():
             st.markdown("### 2. Parse Pasted Text")
             
             if pasted_text.strip():
-                if st.button("Parse and Load Pasted Text", use_container_width=True):
+                if st.button("Parse and Load Pasted Text", key="parse_text_btn", use_container_width=True): # FIX: Added key
                     with st.spinner("Parsing pasted text..."):
                         st.session_state.candidate_uploaded_resumes = []
                         
@@ -1153,7 +1144,7 @@ def candidate_dashboard():
                 if jd_item['name'] in selected_jd_names
             ]
             
-            if st.button(f"Run Match Analysis on {len(jds_to_match)} Selected JD(s)"):
+            if st.button(f"Run Match Analysis on {len(jds_to_match)} Selected JD(s)", key='run_match_analysis_btn'): # FIX: Added key
                 st.session_state.candidate_match_results = []
                 
                 if not jds_to_match:
@@ -1272,7 +1263,7 @@ def candidate_dashboard():
                             st.session_state.qa_answer_resume = "Could not generate an answer."
 
                 if st.session_state.get('qa_answer_resume'):
-                    st.text_area("Answer (Resume)", st.session_state.qa_answer_resume, height=150)
+                    st.text_area("Answer (Resume)", st.session_state.qa_answer_resume, height=150, key='resume_qa_answer_display')
         
         # --- JD CHATBOT CONTENT ---
         with sub_tab_jd:
@@ -1309,7 +1300,7 @@ def candidate_dashboard():
                         st.error("Please select a JD and enter a question.")
 
                 if st.session_state.get('qa_answer_jd'):
-                    st.text_area("Answer (JD)", st.session_state.qa_answer_jd, height=150)
+                    st.text_area("Answer (JD)", st.session_state.qa_answer_jd, height=150, key='jd_qa_answer_display')
 
 
     # --- TAB 6: Interview Prep ---
