@@ -44,7 +44,10 @@ def extract_jd_metadata(jd_text):
     return {"role": "General Analyst", "job_type": "Full-time", "key_skills": ["Python", "SQL", "Cloud"]}
 
 def parse_and_store_resume(file_input, file_name_key='default', source_type='file'):
-    """Stub: Simulates parsing and stores results into a structure."""
+    """Stub: Simulates parsing and stores results into a structure.
+    
+    CONFIRMED FIX: Updated default structured experience to include 'AIML Engineer at Prgayan AI (2025 - Present)'.
+    """
     if st.session_state.get('parsed', {}).get('name') and st.session_state.parsed.get('name') != "":
          return {"parsed": st.session_state.parsed, "full_text": st.session_state.full_text, "excel_data": None, "name": st.session_state.parsed['name']}
     
@@ -55,24 +58,28 @@ def parse_and_store_resume(file_input, file_name_key='default', source_type='fil
         name_from_file = "Parsed Text CV"
         
     # Example structured experience for default parsing
+    current_year = str(date.today().year)
+    
+    # --- START OF FIX: Specific Role Initialized ---
     default_structured_experience = [
         {
-            "company": "TechCorp", 
-            "role": "Senior Engineer", 
-            "from_year": "2020", 
-            "to_year": str(date.today().year), 
-            "ctc": "$120k", 
-            "responsibilities": "Managed 5-person team, led migration to AWS."
+            "company": "Prgayan AI", 
+            "role": "AIML Engineer", 
+            "from_year": "2025", 
+            "to_year": "Present", 
+            "ctc": "Negotiable", 
+            "responsibilities": "Developing and deploying AI/ML models for NLP and Computer Vision projects."
         },
         {
-            "company": "DataStart", 
+            "company": "DataStart Innovations", 
             "role": "Junior Developer", 
-            "from_year": "2018", 
-            "to_year": "2020", 
+            "from_year": "2022", 
+            "to_year": "2024", 
             "ctc": "$60k", 
             "responsibilities": "Developed ETL pipelines using Python and SQL."
         }
     ]
+    # --- END OF FIX ---
     
     # Example structured certifications for default parsing
     default_structured_certifications = [
@@ -92,18 +99,18 @@ def parse_and_store_resume(file_input, file_name_key='default', source_type='fil
         "phone": "555-123-4567",
         "linkedin": "linkedin.com/in/candidate", 
         "github": "github.com/candidate",
-        "skills": ["Python", "SQL", "Streamlit", "Data Analysis", "Git"], 
+        "skills": ["Python", "Machine Learning", "Streamlit", "Data Analysis", "TensorFlow"], 
         "experience": default_structured_experience, # Storing structured data here
         "structured_experience": default_structured_experience, # Structured list for form
         "education": [
-            "M.Sc. Computer Science (2016 - 2018) | University of Excellence | City University",
-            "B.Tech. Information Technology (2012 - 2016) | College of Engineering | State University"
+            "M.Sc. Computer Science (2020 - 2022) | University of Excellence | City University",
+            "B.Tech. Information Technology (2016 - 2020) | College of Engineering | State University"
         ],
         "certifications": default_structured_certifications, # Storing structured data here
         "structured_certifications": default_structured_certifications, # New structured list for form
         "projects": ["Built this Streamlit Dashboard"], 
         "strength": ["Problem Solver", "Quick Learner"], 
-        "personal_details": "Highly motivated and results-oriented professional."
+        "personal_details": "Highly motivated and results-oriented professional with 3+ years experience in AIML."
     }
     
     # Create a placeholder full_text 
@@ -147,8 +154,8 @@ Experience Match: {experience}%
 Education Match: 80%
 
 Strengths/Matches:
-- Candidate's Python and SQL skills ({skills}%) are an excellent match for this JD.
-- Experience ({experience}%) is relevant, though perhaps slightly under the ideal level.
+- Candidate's Python and ML skills ({skills}%) are an excellent match for this JD.
+- Experience ({experience}%) is relevant, particularly the **AIML Engineer at Prgayan AI** role.
 
 Gaps/Areas for Improvement:
 - Needs more specific experience in the [Niche Technology] mentioned in the JD.
@@ -188,7 +195,7 @@ Feedback:
 ---
 ## Final Assessment
 Total Score: {total_score}/{len(qa_list) * 10}
-Overall Summary: The candidate shows **Good** fundamental knowledge. To score higher, better integrate answers with accomplishments listed in the resume (e.g., mention specific projects).
+Overall Summary: The candidate shows **Good** fundamental knowledge. To score higher, better integrate answers with accomplishments listed in the resume (e.g., mention specific projects from the Prgayan AI role).
 """)
     
     return "\n".join(feedback_parts)
@@ -611,7 +618,7 @@ def cv_management_tab_content():
             )
             
         with col_r:
-            # Role/Title is already a simple text input, which accepts plain text only.
+            # Role/Title is a simple text input, which accepts plain text only.
             role_val = st.text_input(
                 "Role/Title", 
                 key="temp_exp_role_key", 
