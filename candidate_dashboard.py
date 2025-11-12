@@ -188,10 +188,12 @@ def generate_interview_questions(parsed_json, section):
     
     # Customize question based on the new structured education data
     education_data = parsed_json.get('education', [])
-    education_detail = ""
+    first_degree = {}
     if education_data and isinstance(education_data[0], dict):
         first_degree = education_data[0]
         score_display = f"{first_degree.get('score', 'N/A')} {first_degree.get('type', 'Score')}"
+    else:
+        score_display = "N/A"
 
     if section == "education":
         return f"""[Technical/Academic]
@@ -479,7 +481,7 @@ def cv_management_tab_content():
             key="cv_personal_details_input"
         ).strip() # Strip on read
         
-        # NOTE: SKILLS, PROJECTS, & STRENGTHS SECTION HAS BEEN MOVED DOWN
+        # NOTE: SKILLS, PROJECTS, & STRENGTHS SECTION WAS HERE - NOW MOVED DOWN
         
         # The form submission button must remain *inside* the st.form block.
         # It will be moved to the very bottom of the form block, after the dynamically added fields 
@@ -487,7 +489,6 @@ def cv_management_tab_content():
         
         # The rest of the form is broken out into dynamic sections below (Education, Certifications, Experience),
         # which are then followed by the *rest* of the form content (Skills/Projects).
-
         
     # --- DYNAMIC EDUCATION SECTION (OUTSIDE the main form) ---
     st.markdown("---")
@@ -895,16 +896,8 @@ def cv_management_tab_content():
     
     # --- SKILLS & PROJECTS (Kept as text areas and moved here - back inside the main form) ---
     # We must re-enter the form context to place the following elements inside the 'cv_builder_form'
+    # Use the same key to continue the existing form
     with st.form("cv_builder_form", clear_on_submit=False): 
-        # The form has already been initialized, this block adds content to it.
-        # We need to re-use the form key. Since the initial block handled the Personal/Summary, 
-        # we can put the rest of the form content here. Streamlit handles multi-block forms fine.
-        
-        # IMPORTANT: If the form is already submitted, this block won't re-render.
-        # Since we rely on the main submit button at the end to trigger the final save, this is fine.
-        
-        # Ensure the form's other elements are not re-rendered unnecessarily if they're handled outside.
-        # The dynamic sections above are outside, so this block starts with the Skills/Projects.
         
         st.markdown("---")
         st.subheader("Skills, Projects, & Strengths (One Item per Line)")
