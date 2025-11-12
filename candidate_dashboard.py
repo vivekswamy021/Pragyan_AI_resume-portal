@@ -24,37 +24,8 @@ def clear_interview_state():
     st.session_state.evaluation_report = ""
     st.toast("Practice answers cleared.")
     
-def generate_experience_string(entry: Dict[str, Any]) -> str:
-    """Formats a structured experience entry into a single string for storage."""
-    company = entry.get('company', 'N/A')
-    role = entry.get('role', 'N/A')
-    from_year = entry.get('from_year', 'N/A')
-    to_year = entry.get('to_year', 'Present')
-    ctc = entry.get('ctc', 'Confidential')
-    responsibilities = entry.get('responsibilities', 'Key Responsibilities not listed.')
-
-    if from_year and to_year:
-        duration = f"({from_year} - {to_year})"
-    else:
-        duration = ""
-
-    # Format the output string for the main 'experience' list
-    return (
-        f"**{role}** at **{company}** {duration}. "
-        f"**CTC:** {ctc}. "
-        f"**Responsibilities:** {responsibilities.replace('\n', ' ')}"
-    )
-
-def generate_certification_string(entry: Dict[str, Any]) -> str:
-    """Formats a structured certification entry into a single string for storage."""
-    title = entry.get('title', 'N/A')
-    given_by = entry.get('given_by', 'N/A')
-    issue_date = entry.get('issue_date', 'N/A')
-    
-    # Format the output string for the main 'certifications' list
-    return (
-        f"**{title}** | Given by: **{given_by}** | Issued: **{issue_date}**"
-    )
+# --- REMOVED generate_experience_string and generate_certification_string ---
+# The parsed data will now use the structured lists directly for these sections.
 
 # --- External LLM/File Logic (Simplified or Stubbed for standalone copy) ---
 question_section_options = ["skills","experience", "certifications", "projects", "education"]
@@ -115,9 +86,8 @@ def parse_and_store_resume(file_input, file_name_key='default', source_type='fil
         }
     ]
     
-    # Generate the string list from the structured data
-    experience_string_list = [generate_experience_string(e) for e in default_structured_experience]
-    certification_string_list = [generate_certification_string(c) for c in default_structured_certifications]
+    # In the new structure, 'experience' and 'certifications' will hold the structured data
+    # (These keys are kept for backward compatibility with some LLM tool interfaces)
 
     parsed_data = {
         "name": name_from_file, 
@@ -126,13 +96,13 @@ def parse_and_store_resume(file_input, file_name_key='default', source_type='fil
         "linkedin": "linkedin.com/in/candidate", 
         "github": "github.com/candidate",
         "skills": ["Python", "SQL", "Streamlit", "Data Analysis", "Git"], 
-        "experience": experience_string_list, # List of strings for AI consumption
+        "experience": default_structured_experience, # Storing structured data here
         "structured_experience": default_structured_experience, # Structured list for form
         "education": [
             "M.Sc. Computer Science (2016 - 2018) | University of Excellence | City University",
             "B.Tech. Information Technology (2012 - 2016) | College of Engineering | State University"
         ],
-        "certifications": certification_string_list, # List of strings for AI consumption
+        "certifications": default_structured_certifications, # Storing structured data here
         "structured_certifications": default_structured_certifications, # New structured list for form
         "projects": ["Built this Streamlit Dashboard"], 
         "strength": ["Problem Solver", "Quick Learner"], 
@@ -145,7 +115,11 @@ def parse_and_store_resume(file_input, file_name_key='default', source_type='fil
         if v and k not in ["structured_experience", "structured_certifications"]: # Exclude structured lists from raw text
             compiled_text += f"{k.replace('_', ' ').title()}:\n"
             if isinstance(v, list):
-                compiled_text += "\n".join([f"- {item}" for item in v]) + "\n\n"
+                 # For raw text, we will flatten the structured data into simple strings
+                if k in ["experience", "certifications"] and all(isinstance(item, dict) for item in v):
+                     compiled_text += "\n".join([json.dumps(item) for item in v]) + "\n\n"
+                else:
+                    compiled_text += "\n".join([f"- {item}" for item in v if isinstance(item, str)]) + "\n\n"
             else:
                 compiled_text += str(v) + "\n\n"
 
@@ -155,7 +129,7 @@ def qa_on_resume(question):
     """Stub: Simulates Q&A on resume."""
     if "skills" in question.lower():
         return f"Based on the resume, the key skills are: {', '.join(st.session_state.parsed.get('skills', ['No skills found']))}. The candidate has a strong background in data tools."
-    return f"Based on the resume, the answer to '{question}' is: [Simulated Answer - Check experience/projects section for details]."
+    return f"Based on the resume, the answer to '{question}' is: [Simulated Answer - Check experience/projects section for details. The experience is stored as structured data.]"
 
 def qa_on_jd(question, selected_jd_name):
     """Stub: Simulates Q&A on JD."""
@@ -224,17 +198,35 @@ Overall Summary: The candidate shows **Good** fundamental knowledge. To score hi
 
 def generate_cv_html(parsed_data):
     """Stub: Simulates CV HTML generation."""
-    skills_list = "".join([f"<li>{s}</li>" for s in parsed_data.get('skills', [])])
-    education_list = "".join([f"<li>{e}</li>" for e in parsed_data.get('education', [])])
-    experience_list = "".join([f"<li>{e}</li>" for e in parsed_data.get('experience', [])])
-    certifications_list = "".join([f"<li>{c}</li>" for c in parsed_data.get('certifications', [])])
+    skills_list = "".join([f"<li>{s}</li>" for s in parsed_data.get('skills', []) if isinstance(s, str)])
+    education_list = "".join([f"<li>{e}</li>" for e in parsed_data.get('education', []) if isinstance(e, str)])
+    
+    # Use structured data for experience and certifications
+    experience_list = ""
+    for exp in parsed_data.get('experience', []):
+        if isinstance(exp, dict):
+            experience_list += f"""
+            <li>
+                **{exp.get('role', 'N/A')}** at *{exp.get('company', 'N/A')}* ({exp.get('from_year', '')} - {exp.get('to_year', '')})
+                <br>CTC: {exp.get('ctc', 'Confidential')} | Responsibilities: {exp.get('responsibilities', 'N/A')}
+            </li>
+            """
+
+    certifications_list = ""
+    for cert in parsed_data.get('certifications', []):
+        if isinstance(cert, dict):
+            certifications_list += f"""
+            <li>
+                **{cert.get('title', 'N/A')}** | Issued by: {cert.get('given_by', 'N/A')} | Date: {cert.get('issue_date', 'N/A')}
+            </li>
+            """
 
     
     return f"""
     <html>
     <head>
         <title>{parsed_data.get('name', 'CV Preview')}</title>
-        <style>body{{font-family: Arial, sans-serif; margin: 40px;}} h1{{color: #2e6c80; border-bottom: 2px solid #2e6c80;}} h2{{color: #3d99b1;}} ul{{list-style-type: none; padding: 0;}}</style>
+        <style>body{{font-family: Arial, sans-serif; margin: 40px;}} h1{{color: #2e6c80; border-bottom: 2px solid #2e6c80;}} h2{{color: #3d99b1;}} ul{{list-style-type: none; padding: 0;}} li{{margin-bottom: 10px;}}</style>
     </head>
     <body>
         <h1>{parsed_data.get('name', 'CV Preview')}</h1>
@@ -266,13 +258,31 @@ def format_parsed_json_to_markdown(parsed_data):
     md += f"## **SUMMARY**\n---\n"
     md += parsed_data.get('personal_details', 'No summary provided.') + "\n\n"
     md += "## **SKILLS**\n---\n"
-    md += "- " + "\n- ".join(parsed_data.get('skills', ['No skills listed']))
+    md += "- " + "\n- ".join(parsed_data.get('skills', ['No skills listed']) if all(isinstance(s, str) for s in parsed_data.get('skills', [])) else ["Skills list structure mismatch"])
+    
     md += "\n\n## **EXPERIENCE**\n---\n"
-    md += "- " + "\n- ".join(parsed_data.get('experience', ['No experience listed']))
+    experience_md = []
+    for exp in parsed_data.get('experience', []):
+        if isinstance(exp, dict):
+            experience_md.append(
+                f"**{exp.get('role', 'N/A')}** at **{exp.get('company', 'N/A')}** ({exp.get('from_year', '')} - {exp.get('to_year', '')})\n"
+                f"  - *CTC:* {exp.get('ctc', 'Confidential')}\n"
+                f"  - *Responsibilities:* {exp.get('responsibilities', 'N/A')}"
+            )
+    md += "\n\n".join(experience_md)
+    
     md += "\n\n## **EDUCATION**\n---\n"
-    md += "- " + "\n- ".join(parsed_data.get('education', ['No education listed']))
+    md += "- " + "\n- ".join(parsed_data.get('education', ['No education listed']) if all(isinstance(e, str) for e in parsed_data.get('education', [])) else ["Education list structure mismatch"])
+    
     md += "\n\n## **CERTIFICATIONS**\n---\n"
-    md += "- " + "\n- ".join(parsed_data.get('certifications', ['No certifications listed']))
+    certifications_md = []
+    for cert in parsed_data.get('certifications', []):
+        if isinstance(cert, dict):
+            certifications_md.append(
+                f"**{cert.get('title', 'N/A')}** | Issued by: **{cert.get('given_by', 'N/A')}** | Date: **{cert.get('issue_date', 'N/A')}**"
+            )
+    md += "- " + "\n- ".join(certifications_md)
+    
     return md
 
 # ==============================================================================
@@ -290,18 +300,20 @@ def cv_management_tab_content():
         "skills": [], "experience": [], "education": [], "certifications": [], 
         "projects": [], "strength": [], "personal_details": "",
         "structured_experience": [],
-        "structured_certifications": [] # NEW KEY for structured certification input
+        "structured_certifications": []
     }
     
     if "cv_form_data" not in st.session_state:
         # Load from parsed if it exists
         if st.session_state.get('parsed', {}).get('name') and st.session_state.parsed.get('name') != "":
             st.session_state.cv_form_data = st.session_state.parsed.copy()
-            # Ensure the structured lists are present if loading from parsed data
+            # Ensure the structured lists are present, falling back to the main list if needed
             if 'structured_experience' not in st.session_state.cv_form_data:
-                st.session_state.cv_form_data['structured_experience'] = [] 
-            if 'structured_certifications' not in st.session_state.cv_form_data: # Ensure new key exists
-                st.session_state.cv_form_data['structured_certifications'] = [] 
+                # If parsed data only has the old string list, we might lose detail here
+                st.session_state.cv_form_data['structured_experience'] = st.session_state.cv_form_data.get('experience', []) if all(isinstance(i, dict) for i in st.session_state.cv_form_data.get('experience', [])) else [] 
+            if 'structured_certifications' not in st.session_state.cv_form_data:
+                # If parsed data only has the old string list, we might lose detail here
+                st.session_state.cv_form_data['structured_certifications'] = st.session_state.cv_form_data.get('certifications', []) if all(isinstance(i, dict) for i in st.session_state.cv_form_data.get('certifications', [])) else []
         else:
             st.session_state.cv_form_data = default_parsed
             
@@ -326,7 +338,7 @@ def cv_management_tab_content():
             if key not in st.session_state.temp_experience_data:
                 st.session_state.temp_experience_data[key] = default_val
 
-    # Initialize/reset temp_certification_data structure (NEW)
+    # Initialize/reset temp_certification_data structure 
     if 'temp_certification_data' not in st.session_state or not isinstance(st.session_state.temp_certification_data, dict):
          st.session_state.temp_certification_data = {
              "title": "", "given_by": "", "issue_date": str(date.today())
@@ -390,7 +402,7 @@ def cv_management_tab_content():
         # --- EDUCATION DETAILS (TEXT AREA) ---
         st.markdown("---")
         st.subheader("🎓 Education (One degree/institution entry per line)")
-        education_text = "\n".join(st.session_state.cv_form_data.get('education', []))
+        education_text = "\n".join(st.session_state.cv_form_data.get('education', []) if all(isinstance(e, str) for e in st.session_state.cv_form_data.get('education', [])) else [])
         new_education_text = st.text_area(
             "List your education entries (e.g., Degree, Institution, Years...)", 
             value=education_text,
@@ -404,7 +416,7 @@ def cv_management_tab_content():
         st.markdown("---")
         st.subheader("Skills & Projects (One Item per Line)")
 
-        skills_text = "\n".join(st.session_state.cv_form_data.get('skills', []))
+        skills_text = "\n".join(st.session_state.cv_form_data.get('skills', []) if all(isinstance(s, str) for s in st.session_state.cv_form_data.get('skills', [])) else [])
         new_skills_text = st.text_area(
             "Key Skills (Technical and Soft)", 
             value=skills_text,
@@ -413,7 +425,7 @@ def cv_management_tab_content():
         )
         st.session_state.cv_form_data['skills'] = [s.strip() for s in new_skills_text.split('\n') if s.strip()]
         
-        projects_text = "\n".join(st.session_state.cv_form_data.get('projects', []))
+        projects_text = "\n".join(st.session_state.cv_form_data.get('projects', []) if all(isinstance(p, str) for p in st.session_state.cv_form_data.get('projects', [])) else [])
         new_projects_text = st.text_area(
             "Projects (Name, Description, Technologies)", 
             value=projects_text,
@@ -422,7 +434,7 @@ def cv_management_tab_content():
         )
         st.session_state.cv_form_data['projects'] = [p.strip() for p in new_projects_text.split('\n') if p.strip()]
         
-        strength_text = "\n".join(st.session_state.cv_form_data.get('strength', []))
+        strength_text = "\n".join(st.session_state.cv_form_data.get('strength', []) if all(isinstance(s, str) for s in st.session_state.cv_form_data.get('strength', [])) else [])
         new_strength_text = st.text_area(
             "Strengths / Key Personal Qualities (One per line)", 
             value=strength_text,
@@ -683,32 +695,29 @@ def cv_management_tab_content():
             st.error("Please fill in at least your **Full Name** and **Email Address**.")
             return
 
-        # 1. Synchronize the structured lists into the flat lists for AI consumption
+        # 1. Synchronize the structured lists into the flat lists for AI consumption (now storing structured data directly)
         
-        # Experience Synchronization
-        experience_string_list = [
-            generate_experience_string(entry) 
-            for entry in st.session_state.cv_form_data.get('structured_experience', [])
-        ]
-        st.session_state.cv_form_data['experience'] = experience_string_list
+        # Experience Synchronization: Store the structured list directly in the 'experience' key
+        st.session_state.cv_form_data['experience'] = st.session_state.cv_form_data.get('structured_experience', [])
         
-        # Certification Synchronization (NEW)
-        certification_string_list = [
-            generate_certification_string(entry) 
-            for entry in st.session_state.cv_form_data.get('structured_certifications', [])
-        ]
-        st.session_state.cv_form_data['certifications'] = certification_string_list
+        # Certification Synchronization: Store the structured list directly in the 'certifications' key
+        st.session_state.cv_form_data['certifications'] = st.session_state.cv_form_data.get('structured_certifications', [])
         
         # 2. Update the main parsed state
         st.session_state.parsed = st.session_state.cv_form_data.copy()
         
-        # 3. Create a placeholder full_text for the AI tools
+        # 3. Create a placeholder full_text for the AI tools (simplified for structured data)
         compiled_text = ""
         for k, v in st.session_state.cv_form_data.items():
-            if v and k not in ["structured_experience", "structured_certifications"]: # Exclude structured lists from raw text
+            if v and k not in ["structured_experience", "structured_certifications"]: # Exclude duplicate structured lists
                 compiled_text += f"{k.replace('_', ' ').title()}:\n"
                 if isinstance(v, list):
-                    compiled_text += "\n".join([f"- {item}" for item in v]) + "\n\n"
+                    # For raw text, we will convert structured lists to JSON strings for clarity
+                    if k in ["experience", "certifications"] and all(isinstance(item, dict) for item in v):
+                         compiled_text += "\n".join([json.dumps(item) for item in v]) + "\n\n"
+                    # For simple lists (skills, education)
+                    elif all(isinstance(item, str) for item in v):
+                        compiled_text += "\n".join([f"- {item}" for item in v]) + "\n\n"
                 else:
                     compiled_text += str(v) + "\n\n"
         st.session_state.full_text = compiled_text
@@ -718,7 +727,7 @@ def cv_management_tab_content():
         st.session_state.interview_qa = []
         st.session_state.evaluation_report = ""
 
-        st.success(f"✅ CV data for **{st.session_state.parsed['name']}** successfully generated and loaded! You can now use the Chatbot, Match, and Interview Prep tabs.")
+        st.success(f"✅ CV data for **{st.session_state.parsed['name']}** successfully generated and loaded! Experience and Certificates are stored as **structured data**.")
         
     st.markdown("---")
     st.subheader("2. Loaded CV Data Preview and Download")
@@ -955,7 +964,7 @@ def candidate_dashboard():
             "skills": [], "experience": [], "education": [], "certifications": [], 
             "projects": [], "strength": [], "personal_details": "",
             "structured_experience": [], 
-            "structured_certifications": [] # NEW key
+            "structured_certifications": []
         }
     
     # Initialize temp experience data 
@@ -964,7 +973,7 @@ def candidate_dashboard():
             "company": "", "role": "", "from_year": "", "to_year": "Present", "ctc": "", "responsibilities": ""
         }
     
-    # Initialize temp certification data (NEW)
+    # Initialize temp certification data
     if 'temp_certification_data' not in st.session_state or not isinstance(st.session_state.temp_certification_data, dict):
          st.session_state.temp_certification_data = {
             "title": "", "given_by": "", "issue_date": str(date.today())
@@ -978,7 +987,7 @@ def candidate_dashboard():
     if "temp_exp_ctc_key" not in st.session_state: st.session_state["temp_exp_ctc_key"] = ""
     if "temp_exp_responsibilities_key" not in st.session_state: st.session_state["temp_exp_responsibilities_key"] = ""
 
-    # Initialize widget keys for the "Add New Certification Entry" form (NEW)
+    # Initialize widget keys for the "Add New Certification Entry" form
     if "temp_cert_title_key" not in st.session_state: st.session_state["temp_cert_title_key"] = ""
     if "temp_cert_given_by_key" not in st.session_state: st.session_state["temp_cert_given_by_key"] = ""
     if "temp_cert_issue_date_key" not in st.session_state: st.session_state["temp_cert_issue_date_key"] = str(date.today())
@@ -1283,6 +1292,7 @@ def candidate_dashboard():
                             jd_content = jd_item['content']
 
                             try:
+                                # Ensure we pass the structured lists for experience/certifications
                                 fit_output = evaluate_jd_fit(jd_content, st.session_state.parsed)
                                 
                                 score_match = re.search(r'Overall Fit Score:\s*(\d+)/10', fit_output)
@@ -1449,6 +1459,7 @@ def candidate_dashboard():
             if st.button("Generate Interview Questions", key='iq_btn_c'):
                 with st.spinner("Generating questions..."):
                     try:
+                        # Pass the structured data to the question generator
                         raw_questions_response = generate_interview_questions(st.session_state.parsed, section_choice) 
                         st.session_state.iq_output = raw_questions_response
                         
