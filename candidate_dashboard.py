@@ -193,9 +193,9 @@ Overall Summary: The candidate shows **Good** fundamental knowledge. To score hi
     
     return "\n".join(feedback_parts)
 
-# --- FIX APPLIED HERE: Simplified HTML output for Experience and Certifications ---
+# --- FIX APPLIED HERE: Simplified HTML output for Experience and Certifications to plain text ---
 def generate_cv_html(parsed_data):
-    """Generates CV HTML with simplified text output for experience and certifications."""
+    """Generates CV HTML with simplified plain text output for experience and certifications."""
     skills_list = "".join([f"<li>{s}</li>" for s in parsed_data.get('skills', []) if isinstance(s, str)])
     education_list = "".join([f"<li>{e}</li>" for e in parsed_data.get('education', []) if isinstance(e, str)])
     
@@ -203,20 +203,22 @@ def generate_cv_html(parsed_data):
     experience_list = ""
     for exp in parsed_data.get('experience', []):
         if isinstance(exp, dict):
+            # Format: Role at Company (Start Year - End Year). Responsibilities: <text>
             experience_list += f"""
             <li>
-                **{exp.get('role', 'N/A')}** at *{exp.get('company', 'N/A')}* ({exp.get('from_year', '')} - {exp.get('to_year', '')})
-                <br>{exp.get('responsibilities', 'N/A')}
+                **{exp.get('role', 'N/A')}** at {exp.get('company', 'N/A')} ({exp.get('from_year', '')} - {exp.get('to_year', '')}).
+                <br>Responsibilities: {exp.get('responsibilities', 'N/A')}
             </li>
-            """ # Removed CTC display and simplified the responsibilities line
+            """
 
     # Use structured data for certifications, but output simply
     certifications_list = ""
     for cert in parsed_data.get('certifications', []):
         if isinstance(cert, dict):
+            # Format: Title - Issued by: Organization, Date: <date>
             certifications_list += f"""
             <li>
-                **{cert.get('title', 'N/A')}** | Issued by: {cert.get('given_by', 'N/A')} | Date: {cert.get('issue_date', 'N/A')}
+                {cert.get('title', 'N/A')} - Issued by: {cert.get('given_by', 'N/A')}, Date: {cert.get('issue_date', 'N/A')}
             </li>
             """
 
@@ -249,9 +251,9 @@ def generate_cv_html(parsed_data):
     </html>
     """
 
-# --- FIX APPLIED HERE: Simplified Markdown output for Experience and Certifications ---
+# --- FIX APPLIED HERE: Simplified Markdown output for Experience and Certifications to plain text ---
 def format_parsed_json_to_markdown(parsed_data):
-    """Generates CV Markdown with simplified text output for experience and certifications."""
+    """Generates CV Markdown with simplified plain text output for experience and certifications."""
     md = f"# **{parsed_data.get('name', 'CV Preview').upper()}**\n"
     md += f"**Contact:** {parsed_data.get('email', 'N/A')} | {parsed_data.get('phone', 'N/A')} | [LinkedIn]({parsed_data.get('linkedin', '#')})\n"
     md += "\n"
@@ -264,10 +266,10 @@ def format_parsed_json_to_markdown(parsed_data):
     experience_md = []
     for exp in parsed_data.get('experience', []):
         if isinstance(exp, dict):
-            # Simplified output: Role, Company, Duration, then Responsibilities as a paragraph/list
+            # Format: Role at Company (Start Year - End Year). Responsibilities: <text>
             experience_md.append(
-                f"**{exp.get('role', 'N/A')}** at **{exp.get('company', 'N/A')}** ({exp.get('from_year', '')} - {exp.get('to_year', '')})\n"
-                f"{exp.get('responsibilities', 'N/A')}" # Removed *- * label for responsibilities
+                f"**{exp.get('role', 'N/A')}** at {exp.get('company', 'N/A')} ({exp.get('from_year', '')} - {exp.get('to_year', '')}).\n"
+                f"Responsibilities: {exp.get('responsibilities', 'N/A')}" 
             )
     md += "\n\n".join(experience_md)
     
@@ -278,8 +280,9 @@ def format_parsed_json_to_markdown(parsed_data):
     certifications_md = []
     for cert in parsed_data.get('certifications', []):
         if isinstance(cert, dict):
+            # Format: Title - Issued by: Organization, Date: <date>
             certifications_md.append(
-                f"**{cert.get('title', 'N/A')}** | Issued by: **{cert.get('given_by', 'N/A')}** | Date: **{cert.get('issue_date', 'N/A')}**"
+                f"{cert.get('title', 'N/A')} - Issued by: {cert.get('given_by', 'N/A')}, Date: {cert.get('issue_date', 'N/A')}"
             )
     md += "- " + "\n- ".join(certifications_md)
     
@@ -1530,7 +1533,6 @@ def candidate_dashboard():
 # ==============================================================================
 # 4. MAIN EXECUTION BLOCK (CRITICAL FOR STREAMLIT)
 # ==============================================================================
-
 if __name__ == '__main__':
     # Simple placeholder for a 'login' or landing page
     if 'page' not in st.session_state:
