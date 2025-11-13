@@ -502,7 +502,7 @@ def cv_management_tab_content():
     st.header("📝 Prepare Your CV")
     st.markdown("### 1. Form Based CV Builder")
     st.info("""
-    **IMPORTANT WORKAROUND:** All dynamic sections (Education, Certifications, Experience) now have their **Add** buttons *inside* this main form. 
+    **IMPORTANT WORKAROUND:** All dynamic sections (Education, Experience, Certifications) now have their **Add** buttons *inside* this main form. 
     
     **Workflow:**
     1. Fill in the new entry data (e.g., Education).
@@ -651,55 +651,12 @@ def cv_management_tab_content():
             st.selectbox("Type", options=type_options, index=type_index, key="temp_edu_type_key_sel")
             
         # DYNAMIC ADD BUTTON (Inside the form - CRITICAL)
-        add_edu_button = st.form_submit_button("➕ Add Education Entry (Submits Form)", type="secondary", use_container_width=True, help="Adds the entry above and reloads the page to show the current list.")
+        add_edu_button = st.form_submit_button("➕ Add Education Entry (Submits Form)", key="add_edu_button_form", type="secondary", use_container_width=True, help="Adds the entry above and reloads the page to show the current list.")
         
         st.markdown("---") 
-
-        # --- 4. DYNAMIC CERTIFICATION INPUT FIELDS & ADD BUTTON (Inside the form) ---
-        st.subheader("4. Dynamic Certifications Management")
         
-        col_t, col_g = st.columns(2)
-        with col_t:
-            st.text_input("Certification Title", key="temp_cert_title_key", placeholder="e.g., Google Cloud Architect")
-            
-        with col_g:
-            st.text_input("Issuing Organization", key="temp_cert_given_by_key", placeholder="e.g., Coursera, AWS, PMI")
-            
-        col_d, _ = st.columns(2)
-        with col_d:
-            st.text_input("Issue Date (YYYY-MM-DD or Year)", key="temp_cert_issue_date_key", placeholder="e.g., 2024-05-15 or 2023")
-
-        # DYNAMIC ADD BUTTON (Inside the form - CRITICAL)
-        add_cert_button = st.form_submit_button("➕ Add Certificate (Submits Form)", type="secondary", use_container_width=True, help="Adds the entry above and reloads the page to show the current list.")
-
-        st.markdown("---")
-        
-        # --- 5. PROJECTS ---
-        st.subheader("5. Projects (One Item per Line)")
-        projects_text = "\n".join(st.session_state.cv_form_data.get('projects', []) if all(isinstance(p, str) for p in st.session_state.cv_form_data.get('projects', [])) else [])
-        new_projects_text = st.text_area(
-            "Projects (Name, Description, Technologies)", 
-            value=projects_text,
-            height=100,
-            key="cv_projects_input_form"
-        )
-        st.session_state.cv_form_data['projects'] = [p.strip() for p in new_projects_text.split('\n') if p.strip()]
-
-        # --- 6. STRENGTHS ---
-        st.markdown("---")
-        st.subheader("6. Strengths (One Item per Line)")
-        strength_text = "\n".join(st.session_state.cv_form_data.get('strength', []) if all(isinstance(s, str) for s in st.session_state.cv_form_data.get('strength', [])) else [])
-        new_strength_text = st.text_area(
-            "Key Personal Qualities", 
-            value=strength_text,
-            height=70,
-            key="cv_strength_input_form"
-        )
-        st.session_state.cv_form_data['strength'] = [s.strip() for s in new_strength_text.split('\n') if s.strip()]
-
-        # --- 7. DYNAMIC EXPERIENCE INPUT FIELDS & ADD BUTTON (Inside the form) ---
-        st.markdown("---")
-        st.subheader("7. Dynamic Professional Experience Management")
+        # --- 4. DYNAMIC EXPERIENCE INPUT FIELDS & ADD BUTTON (Moved inside the form) ---
+        st.subheader("4. Dynamic Professional Experience Management")
         
         col_c, col_r = st.columns(2)
         with col_c:
@@ -708,14 +665,14 @@ def cv_management_tab_content():
         with col_r:
             st.text_input("Role/Title", key="temp_exp_role_key", placeholder="e.g., Data Scientist")
 
-        col_fy, col_ty, col_c3 = st.columns(3)
+        col_fy_exp, col_ty_exp, col_c3 = st.columns(3)
         
-        with col_fy:
+        with col_fy_exp:
             current_exp_from_year = st.session_state.get("temp_exp_from_year_key_sel", str(current_year))
             from_year_index = year_options.index(current_exp_from_year) if current_exp_from_year in year_options else 0
             st.selectbox("From Year", options=year_options, index=from_year_index, key="temp_exp_from_year_key_sel")
             
-        with col_ty:
+        with col_ty_exp:
             current_exp_to_year = st.session_state.get("temp_exp_to_year_key_sel", "Present")
             to_year_index = to_year_options.index(current_exp_to_year) if current_exp_to_year in to_year_options else 0
             st.selectbox("To Year", options=to_year_options, index=to_year_index, key="temp_exp_to_year_key_sel")
@@ -730,7 +687,52 @@ def cv_management_tab_content():
         )
         
         # DYNAMIC ADD BUTTON (Inside the form - CRITICAL)
-        add_exp_button = st.form_submit_button("➕ Add This Experience (Submits Form)", type="secondary", use_container_width=True, help="Adds the entry above and reloads the page to show the current list.")
+        add_exp_button = st.form_submit_button("➕ Add This Experience (Submits Form)", key="add_exp_button_form", type="secondary", use_container_width=True, help="Adds the entry above and reloads the page to show the current list.")
+        
+        st.markdown("---") 
+
+        # --- 5. DYNAMIC CERTIFICATION INPUT FIELDS & ADD BUTTON (Inside the form) ---
+        st.subheader("5. Dynamic Certifications Management")
+        
+        col_t, col_g = st.columns(2)
+        with col_t:
+            st.text_input("Certification Title", key="temp_cert_title_key", placeholder="e.g., Google Cloud Architect")
+            
+        with col_g:
+            st.text_input("Issuing Organization", key="temp_cert_given_by_key", placeholder="e.g., Coursera, AWS, PMI")
+            
+        col_d, _ = st.columns(2)
+        with col_d:
+            st.text_input("Issue Date (YYYY-MM-DD or Year)", key="temp_cert_issue_date_key", placeholder="e.g., 2024-05-15 or 2023")
+
+        # DYNAMIC ADD BUTTON (Inside the form - CRITICAL)
+        add_cert_button = st.form_submit_button("➕ Add Certificate (Submits Form)", key="add_cert_button_form", type="secondary", use_container_width=True, help="Adds the entry above and reloads the page to show the current list.")
+
+        st.markdown("---")
+        
+        # --- 6. PROJECTS ---
+        st.subheader("6. Projects (One Item per Line)")
+        projects_text = "\n".join(st.session_state.cv_form_data.get('projects', []) if all(isinstance(p, str) for p in st.session_state.cv_form_data.get('projects', [])) else [])
+        new_projects_text = st.text_area(
+            "Projects (Name, Description, Technologies)", 
+            value=projects_text,
+            height=100,
+            key="cv_projects_input_form"
+        )
+        st.session_state.cv_form_data['projects'] = [p.strip() for p in new_projects_text.split('\n') if p.strip()]
+
+        # --- 7. STRENGTHS ---
+        st.markdown("---")
+        st.subheader("7. Strengths (One Item per Line)")
+        strength_text = "\n".join(st.session_state.cv_form_data.get('strength', []) if all(isinstance(s, str) for s in st.session_state.cv_form_data.get('strength', [])) else [])
+        new_strength_text = st.text_area(
+            "Key Personal Qualities", 
+            value=strength_text,
+            height=70,
+            key="cv_strength_input_form"
+        )
+        st.session_state.cv_form_data['strength'] = [s.strip() for s in new_strength_text.split('\n') if s.strip()]
+
         
         st.markdown("---") 
 
@@ -821,26 +823,6 @@ def cv_management_tab_content():
         st.info("No education entries added yet.")
 
 
-    
-    # --- DYNAMIC CERTIFICATION DISPLAY (Outside the form for cleaner button behavior) ---
-    st.markdown("---")
-    st.subheader("🏅 **Current Certifications**")
-    if st.session_state.cv_form_data['structured_certifications']:
-        for i, entry in enumerate(st.session_state.cv_form_data['structured_certifications']):
-            
-            expander_title = f"{entry['title']} by {entry['given_by']} (Issued: {entry['issue_date']})"
-            
-            with st.expander(expander_title, expanded=False):
-                st.markdown(f"**Title:** {entry['title']}")
-                st.markdown(f"**Issued By:** {entry['given_by']}")
-                st.markdown(f"**Issue Date:** {entry['issue_date']}")
-                
-                # Remove button (OUTSIDE form)
-                st.button("❌ Remove Certificate", key=f"remove_cert_{i}", on_click=remove_certification_entry, args=(i,), type="secondary") 
-    else:
-        st.info("No certifications added yet.")
-
-    
     # --- DYNAMIC EXPERIENCE DISPLAY (Outside the form for cleaner button behavior) ---
     st.markdown("---")
     st.subheader("💼 **Current Professional Experience Entries**")
@@ -860,6 +842,26 @@ def cv_management_tab_content():
                 st.button("❌ Remove Experience Entry", key=f"remove_exp_{i}", on_click=remove_experience_entry, args=(i,), type="secondary") 
     else:
         st.info("No experience entries added yet.")
+
+    
+    # --- DYNAMIC CERTIFICATION DISPLAY (Outside the form for cleaner button behavior) ---
+    st.markdown("---")
+    st.subheader("🏅 **Current Certifications**")
+    if st.session_state.cv_form_data['structured_certifications']:
+        for i, entry in enumerate(st.session_state.cv_form_data['structured_certifications']):
+            
+            expander_title = f"{entry['title']} by {entry['given_by']} (Issued: {entry['issue_date']})"
+            
+            with st.expander(expander_title, expanded=False):
+                st.markdown(f"**Title:** {entry['title']}")
+                st.markdown(f"**Issued By:** {entry['given_by']}")
+                st.markdown(f"**Issue Date:** {entry['issue_date']}")
+                
+                # Remove button (OUTSIDE form)
+                st.button("❌ Remove Certificate", key=f"remove_cert_{i}", on_click=remove_certification_entry, args=(i,), type="secondary") 
+    else:
+        st.info("No certifications added yet.")
+
     
     # --- CV Preview and Download ---
     st.markdown("---")
