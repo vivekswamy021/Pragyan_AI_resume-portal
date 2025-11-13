@@ -94,13 +94,13 @@ def parse_and_store_resume(file_input, file_name_key='default', source_type='fil
     default_structured_projects = [
         {
             "name": "Candidate Dashboard Builder",
-            "link": "https://github.com/example/dashboard",
+            "link": "[https://github.com/example/dashboard](https://github.com/example/dashboard)",
             "description": "Developed a full-stack candidate dashboard using Streamlit for CV editing, JD matching, and interview preparation.",
             "technologies": "Streamlit, Python, Pandas, JSON"
         },
         {
             "name": "NLP Sentiment Analysis Model",
-            "link": "https://github.com/example/nlp",
+            "link": "[https://github.com/example/nlp](https://github.com/example/nlp)",
             "description": "Created a sentiment analysis model using TensorFlow and Keras to classify customer reviews with 92% accuracy.",
             "technologies": "Python, TensorFlow, Keras, NLTK"
         }
@@ -111,8 +111,8 @@ def parse_and_store_resume(file_input, file_name_key='default', source_type='fil
         "name": name_from_file, 
         "email": "candidate@example.com", 
         "phone": "555-123-4567",
-        "linkedin": "linkedin.com/in/candidate", 
-        "github": "github.com/candidate",
+        "linkedin": "[linkedin.com/in/candidate](https://linkedin.com/in/candidate)", 
+        "github": "[github.com/candidate](https://github.com/candidate)",
         "skills": ["Python", "Machine Learning", "Streamlit", "Data Analysis", "TensorFlow"], 
         
         "experience": default_structured_experience, 
@@ -441,11 +441,7 @@ def add_education_entry_handler():
     st.session_state["temp_edu_degree_key"] = ""
     st.session_state["temp_edu_college_key"] = ""
     st.session_state["temp_edu_university_key"] = ""
-    # Note: selectbox values need explicit assignment if they're to change
-    # st.session_state["temp_edu_from_year_key_sel"] = str(current_year) 
-    # st.session_state["temp_edu_to_year_key_sel"] = "Present" 
     st.session_state["temp_edu_score_key"] = ""
-    # st.session_state["temp_edu_type_key_sel"] = "CGPA"
     
     st.session_state.force_rerun_for_add = True 
     return True
@@ -476,7 +472,6 @@ def add_certification_entry_handler():
     st.session_state["temp_cert_title_key"] = ""
     st.session_state["temp_cert_given_by_name_key"] = "" 
     st.session_state["temp_cert_organization_name_key"] = "" 
-    # st.session_state["temp_cert_issue_date_key"] = str(date.today().year) # Year selectbox handled by default/no reset
     
     st.session_state.force_rerun_for_add = True 
     return True
@@ -508,11 +503,8 @@ def add_experience_entry_handler():
     st.toast(f"Experience at {new_entry['company']} added (Form Submitted).")
     
     # Reset temp state/widget values
-    # current_year = date.today().year
     st.session_state["temp_exp_company_key"] = ""
     st.session_state["temp_exp_role_key"] = ""
-    # st.session_state["temp_exp_from_year_key_sel"] = str(current_year)
-    # st.session_state["temp_exp_to_year_key_sel"] = "Present"
     st.session_state["temp_exp_ctc_key"] = ""
     st.session_state["temp_exp_responsibilities_key"] = ""
     
@@ -554,7 +546,7 @@ def add_project_entry_handler():
 
 # Handlers for removing (these must trigger a direct state change and rerun)
 def remove_education_entry(index):
-    # This handler is called directly by the st.button's on_click property inside the form
+    # This handler is called directly by the st.button's on_click property (OUTSIDE THE FORM)
     if 0 <= index < len(st.session_state.cv_form_data['structured_education']):
         removed_degree = st.session_state.cv_form_data['structured_education'][index]['degree']
         del st.session_state.cv_form_data['structured_education'][index]
@@ -590,7 +582,7 @@ def cv_management_tab_content():
     st.header("📝 Prepare Your CV")
     st.markdown("### 1. Form Based CV Builder")
     st.info("""
-    **CV Builder Workflow:** Fill in the dynamic entry data (e.g., Education, Projects) and click the corresponding **'Add Entry'** button to save it. Repeat for all entries. The current entries are listed right below their respective input sections. **Remove buttons are now placed directly next to their entries.** When finished, click the final **'Generate and Load ALL CV Data'** button to finalize all sections.
+    **CV Builder Workflow:** Fill in the dynamic entry data (e.g., Education, Projects) and click the corresponding **'Add Entry'** button to save it. Repeat for all entries. The current entries are listed right below their respective input sections. **Remove buttons are now placed *outside* the form to prevent Streamlit submission errors.** When finished, click the final **'Generate and Load ALL CV Data'** button to finalize all sections.
     """)
 
     # --- Session State Initialization for CV Builder ---
@@ -742,26 +734,6 @@ def cv_management_tab_content():
         # Add Entry Button
         add_edu_button = st.form_submit_button("➕ Add Education Entry (Submits Form)", key="add_edu_button_form", type="secondary", use_container_width=True, help="Adds the entry above and reloads the page to show the current list.")
         
-        
-        # --- DYNAMIC EDUCATION DISPLAY (Inside the form, with Remove buttons) ---
-        st.markdown("##### 🎓 Current Education Entries")
-        if st.session_state.cv_form_data['structured_education']:
-            for i, entry in enumerate(st.session_state.cv_form_data['structured_education']):
-                col_disp, col_rem = st.columns([6, 1])
-                with col_disp:
-                    score_display = f"{entry.get('score', 'N/A')} {entry.get('type', '')}".strip()
-                    st.markdown(f"- **{entry['degree']}** - {entry.get('college', 'N/A')} ({entry['from_year']} - {entry['to_year']}) | Score: {score_display}")
-                with col_rem:
-                    # REMOVE BUTTON INSIDE FORM
-                    st.button("❌", 
-                              key=f"remove_edu_{i}", 
-                              on_click=remove_education_entry, 
-                              args=(i,), 
-                              type="primary", 
-                              help=f"Remove: {entry['degree']}")
-        else:
-            st.info("No education entries added yet.")
-            
         st.markdown("---") 
         
         # --- 4. DYNAMIC EXPERIENCE INPUT FIELDS & ADD BUTTON ---
@@ -798,24 +770,6 @@ def cv_management_tab_content():
         # Add Entry Button
         add_exp_button = st.form_submit_button("➕ Add This Experience (Submits Form)", key="add_exp_button_form", type="secondary", use_container_width=True, help="Adds the entry above and reloads the page to show the current list.")
         
-        # --- DYNAMIC EXPERIENCE DISPLAY (Inside the form, with Remove buttons) ---
-        st.markdown("##### 💼 Current Professional Experience Entries")
-        if st.session_state.cv_form_data['structured_experience']:
-            for i, entry in enumerate(st.session_state.cv_form_data['structured_experience']):
-                col_disp, col_rem = st.columns([6, 1])
-                with col_disp:
-                    st.markdown(f"- **{entry['role']}** at {entry['company']} ({entry['from_year']} - {entry['to_year']}) | CTC: {entry['ctc']}")
-                with col_rem:
-                    # REMOVE BUTTON INSIDE FORM
-                    st.button("❌", 
-                              key=f"remove_exp_{i}", 
-                              on_click=remove_experience_entry, 
-                              args=(i,), 
-                              type="primary",
-                              help=f"Remove: {entry['company']}")
-        else:
-            st.info("No experience entries added yet.")
-            
         st.markdown("---") 
 
         # --- 5. DYNAMIC CERTIFICATION INPUT FIELDS & ADD BUTTON ---
@@ -846,34 +800,13 @@ def cv_management_tab_content():
         # Add Entry Button
         add_cert_button = st.form_submit_button("➕ Add Certificate (Submits Form)", key="add_cert_button_form", type="secondary", use_container_width=True, help="Adds the entry above and reloads the page to show the current list.")
 
-        # --- DYNAMIC CERTIFICATION DISPLAY (Inside the form, with Remove buttons) ---
-        st.markdown("##### 🏅 Current Certifications")
-        if st.session_state.cv_form_data['structured_certifications']:
-            for i, entry in enumerate(st.session_state.cv_form_data['structured_certifications']):
-                col_disp, col_rem = st.columns([6, 1])
-                with col_disp:
-                    issuer_info = f"{entry.get('given_by', 'N/A')}"
-                    if entry.get('organization_name', 'N/A') and entry.get('organization_name', 'N/A') != 'N/A':
-                        issuer_info += f" ({entry.get('organization_name', 'N/A')})"
-                    st.markdown(f"- **{entry['title']}** by {issuer_info} (Issued: {entry['issue_date']})")
-                with col_rem:
-                    # REMOVE BUTTON INSIDE FORM
-                    st.button("❌", 
-                              key=f"remove_cert_{i}", 
-                              on_click=remove_certification_entry, 
-                              args=(i,), 
-                              type="primary",
-                              help=f"Remove: {entry['title']}")
-        else:
-            st.info("No certifications added yet.")
-
         st.markdown("---")
         
         # --- 6. DYNAMIC PROJECTS INPUT FIELDS & ADD BUTTON (NEW) ---
         st.subheader("6. Dynamic Projects Management")
         
         st.text_input("Project Name", key="temp_proj_name_key", placeholder="e.g., NLP Sentiment Analysis Model")
-        st.text_input("Project Link (Optional)", key="temp_proj_link_key", placeholder="e.g., https://github.com/myuser/myproject")
+        st.text_input("Project Link (Optional)", key="temp_proj_link_key", placeholder="e.g., [https://github.com/myuser/myproject](https://github.com/myuser/myproject)")
         
         col_desc, col_tech = st.columns(2)
         with col_desc:
@@ -893,26 +826,6 @@ def cv_management_tab_content():
 
         # Add Entry Button
         add_proj_button = st.form_submit_button("➕ Add Project (Submits Form)", key="add_proj_button_form", type="secondary", use_container_width=True, help="Adds the project above and reloads the page to show the current list.")
-        
-        # --- DYNAMIC PROJECTS DISPLAY (Inside the form, with Remove buttons) ---
-        st.markdown("##### 💻 Current Projects")
-        if st.session_state.cv_form_data['structured_projects']:
-            for i, entry in enumerate(st.session_state.cv_form_data['structured_projects']):
-                col_disp, col_rem = st.columns([6, 1])
-                with col_disp:
-                    link_icon = "🔗" if entry.get('link') else ""
-                    st.markdown(f"- **{entry['name']}** {link_icon} | *Tech: {entry.get('technologies', 'N/A')}*")
-                    st.caption(entry.get('description', 'No description.'))
-                with col_rem:
-                    # REMOVE BUTTON INSIDE FORM
-                    st.button("❌", 
-                              key=f"remove_proj_{i}", 
-                              on_click=remove_project_entry, 
-                              args=(i,), 
-                              type="primary",
-                              help=f"Remove: {entry['name']}")
-        else:
-            st.info("No projects added yet.")
             
         st.markdown("---") 
 
@@ -937,11 +850,12 @@ def cv_management_tab_content():
         submit_form_button = st.form_submit_button("Generate and Load ALL CV Data", type="primary", use_container_width=True)
 
     
-    # --- FORM SUBMISSION LOGIC ---
+    # --- FORM SUBMISSION LOGIC (MUST COME AFTER THE 'with st.form' BLOCK) ---
     if submit_form_button:
         # Final CV Generation
         if not st.session_state.cv_form_data['name'] or not st.session_state.cv_form_data['email']:
             st.error("Please fill in at least your **Full Name** and **Email Address**.")
+            # Note: Since the form is submitted, this error will be visible on the next rerun
             return
 
         # 1. Synchronize the structured lists into the main keys for AI consumption
@@ -981,6 +895,7 @@ def cv_management_tab_content():
         st.success(f"✅ CV data for **{st.session_state.parsed['name']}** successfully generated and loaded! All major sections are stored as **structured data**.")
         
     # --- Dynamic Add Button Logic (Executed when a specific Add button submits the form) ---
+    # These must be checked AFTER the main form block, not inside the block logic
     elif add_edu_button:
         add_education_entry_handler()
         
@@ -999,6 +914,95 @@ def cv_management_tab_content():
         st.session_state.force_rerun_for_add = False
         st.rerun() # Force rerun to clear inputs and display list update
         
+    
+    # --- DYNAMIC DISPLAY SECTIONS (NOW OUTSIDE THE FORM) ---
+
+    # Education Display
+    st.markdown("### 🎓 Current Education Entries")
+    if st.session_state.cv_form_data['structured_education']:
+        for i, entry in enumerate(st.session_state.cv_form_data['structured_education']):
+            col_disp, col_rem = st.columns([6, 1])
+            with col_disp:
+                score_display = f"{entry.get('score', 'N/A')} {entry.get('type', '')}".strip()
+                st.markdown(f"- **{entry['degree']}** - {entry.get('college', 'N/A')} ({entry['from_year']} - {entry['to_year']}) | Score: {score_display}")
+            with col_rem:
+                # REMOVE BUTTON OUTSIDE FORM (FIXED)
+                st.button("❌", 
+                          key=f"remove_edu_{i}_out", 
+                          on_click=remove_education_entry, 
+                          args=(i,), 
+                          type="primary", 
+                          help=f"Remove: {entry['degree']}")
+    else:
+        st.info("No education entries added yet.")
+        
+    st.markdown("---")
+
+    # Experience Display
+    st.markdown("### 💼 Current Professional Experience Entries")
+    if st.session_state.cv_form_data['structured_experience']:
+        for i, entry in enumerate(st.session_state.cv_form_data['structured_experience']):
+            col_disp, col_rem = st.columns([6, 1])
+            with col_disp:
+                st.markdown(f"- **{entry['role']}** at {entry['company']} ({entry['from_year']} - {entry['to_year']}) | CTC: {entry['ctc']}")
+            with col_rem:
+                # REMOVE BUTTON OUTSIDE FORM (FIXED)
+                st.button("❌", 
+                          key=f"remove_exp_{i}_out", 
+                          on_click=remove_experience_entry, 
+                          args=(i,), 
+                          type="primary",
+                          help=f"Remove: {entry['company']}")
+    else:
+        st.info("No experience entries added yet.")
+
+    st.markdown("---")
+    
+    # Certifications Display
+    st.markdown("### 🏅 Current Certifications")
+    if st.session_state.cv_form_data['structured_certifications']:
+        for i, entry in enumerate(st.session_state.cv_form_data['structured_certifications']):
+            col_disp, col_rem = st.columns([6, 1])
+            with col_disp:
+                issuer_info = f"{entry.get('given_by', 'N/A')}"
+                if entry.get('organization_name', 'N/A') and entry.get('organization_name', 'N/A') != 'N/A':
+                    issuer_info += f" ({entry.get('organization_name', 'N/A')})"
+                st.markdown(f"- **{entry['title']}** by {issuer_info} (Issued: {entry['issue_date']})")
+            with col_rem:
+                # REMOVE BUTTON OUTSIDE FORM (FIXED)
+                st.button("❌", 
+                          key=f"remove_cert_{i}_out", 
+                          on_click=remove_certification_entry, 
+                          args=(i,), 
+                          type="primary",
+                          help=f"Remove: {entry['title']}")
+    else:
+        st.info("No certifications added yet.")
+        
+    st.markdown("---")
+    
+    # Projects Display
+    st.markdown("### 💻 Current Projects")
+    if st.session_state.cv_form_data['structured_projects']:
+        for i, entry in enumerate(st.session_state.cv_form_data['structured_projects']):
+            col_disp, col_rem = st.columns([6, 1])
+            with col_disp:
+                link_icon = "🔗" if entry.get('link') else ""
+                st.markdown(f"- **{entry['name']}** {link_icon} | *Tech: {entry.get('technologies', 'N/A')}*")
+                st.caption(entry.get('description', 'No description.'))
+            with col_rem:
+                # REMOVE BUTTON OUTSIDE FORM (FIXED)
+                st.button("❌", 
+                          key=f"remove_proj_{i}_out", 
+                          on_click=remove_project_entry, 
+                          args=(i,), 
+                          type="primary",
+                          help=f"Remove: {entry['name']}")
+    else:
+        st.info("No projects added yet.")
+        
+    st.markdown("---")
+    
     
     # --- CV Preview and Download ---
     st.markdown("---")
@@ -1417,7 +1421,7 @@ def candidate_dashboard():
                             st.success(f"✅ Successfully loaded and parsed **{result['name']}**.")
                             st.info("View, edit, and download the parsed data in the **CV Management** tab.") 
                         else:
-                            st.error(f"Parsing failed: {result['error']}")
+                            st.error(f"Parsing failed: {e}")
                             st.session_state.parsed = {"error": result['error'], "name": result['name']}
                             st.session_state.full_text = result['full_text'] or ""
             else:
@@ -1708,8 +1712,6 @@ def candidate_dashboard():
                             except Exception as e:
                                 st.error(f"Error during JD Q&A: {e}")
                                 st.session_state.qa_answer_jd = "Could not generate an answer."
-                    else:
-                        st.error("Please select a JD and enter a question.")
 
                 if st.session_state.get('qa_answer_jd'):
                     st.text_area("Answer (JD)", st.session_state.qa_answer_jd, height=150, key='jd_qa_answer_display')
