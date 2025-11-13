@@ -502,13 +502,7 @@ def cv_management_tab_content():
     st.header("📝 Prepare Your CV")
     st.markdown("### 1. Form Based CV Builder")
     st.info("""
-    **IMPORTANT WORKAROUND:** All dynamic sections (Education, Experience, Certifications) now have their **Add** buttons *inside* this main form. 
-    
-    **Workflow:**
-    1. Fill in the new entry data (e.g., Education).
-    2. Click the specific **'Add ... Entry'** button. This submits the form, saves the entry, and forces a refresh.
-    3. Repeat until all dynamic entries are added.
-    4. Click the final **'Generate and Load ALL CV Data'** to finalize all sections.
+    **CV Builder Workflow:** Fill in the dynamic entry data (e.g., Education) and click the corresponding **'Add Entry'** button to save it. Repeat for all entries. When finished, click the final **'Generate and Load ALL CV Data'** button to finalize all sections.
     """)
 
     # --- Session State Initialization for CV Builder ---
@@ -618,7 +612,7 @@ def cv_management_tab_content():
         
         # --- 3. DYNAMIC EDUCATION INPUT FIELDS & ADD BUTTON (Inside the form) ---
         st.markdown("---")
-        st.subheader("3. Education Management")
+        st.subheader("3. Dynamic Education Management")
         
         col_d, col_c = st.columns(2)
         with col_d:
@@ -656,7 +650,7 @@ def cv_management_tab_content():
         st.markdown("---") 
         
         # --- 4. DYNAMIC EXPERIENCE INPUT FIELDS & ADD BUTTON (Moved inside the form) ---
-        st.subheader("4. Professional Experience Management")
+        st.subheader("4. Dynamic Professional Experience Management")
         
         col_c, col_r = st.columns(2)
         with col_c:
@@ -692,7 +686,7 @@ def cv_management_tab_content():
         st.markdown("---") 
 
         # --- 5. DYNAMIC CERTIFICATION INPUT FIELDS & ADD BUTTON (Inside the form) ---
-        st.subheader("5. Certifications Management")
+        st.subheader("5. Dynamic Certifications Management")
         
         col_t, col_g = st.columns(2)
         with col_t:
@@ -711,7 +705,7 @@ def cv_management_tab_content():
         st.markdown("---")
         
         # --- 6. PROJECTS ---
-        st.subheader("6. Projects (One Project per Line)")
+        st.subheader("6. Projects (One Item per Line)")
         projects_text = "\n".join(st.session_state.cv_form_data.get('projects', []) if all(isinstance(p, str) for p in st.session_state.cv_form_data.get('projects', [])) else [])
         new_projects_text = st.text_area(
             "Projects (Name, Description, Technologies)", 
