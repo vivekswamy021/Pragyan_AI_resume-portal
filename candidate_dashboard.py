@@ -618,7 +618,7 @@ def cv_management_tab_content():
         
         # --- 3. DYNAMIC EDUCATION INPUT FIELDS & ADD BUTTON (Inside the form) ---
         st.markdown("---")
-        st.subheader("3. Dynamic Education Management")
+        st.subheader("3. Education Management")
         
         col_d, col_c = st.columns(2)
         with col_d:
@@ -656,7 +656,7 @@ def cv_management_tab_content():
         st.markdown("---") 
         
         # --- 4. DYNAMIC EXPERIENCE INPUT FIELDS & ADD BUTTON (Moved inside the form) ---
-        st.subheader("4. Dynamic Professional Experience Management")
+        st.subheader("4. Professional Experience Management")
         
         col_c, col_r = st.columns(2)
         with col_c:
@@ -692,7 +692,7 @@ def cv_management_tab_content():
         st.markdown("---") 
 
         # --- 5. DYNAMIC CERTIFICATION INPUT FIELDS & ADD BUTTON (Inside the form) ---
-        st.subheader("5. Dynamic Certifications Management")
+        st.subheader("5. Certifications Management")
         
         col_t, col_g = st.columns(2)
         with col_t:
@@ -711,7 +711,7 @@ def cv_management_tab_content():
         st.markdown("---")
         
         # --- 6. PROJECTS ---
-        st.subheader("6. Projects (One Item per Line)")
+        st.subheader("6. Projects (One Project per Line)")
         projects_text = "\n".join(st.session_state.cv_form_data.get('projects', []) if all(isinstance(p, str) for p in st.session_state.cv_form_data.get('projects', [])) else [])
         new_projects_text = st.text_area(
             "Projects (Name, Description, Technologies)", 
