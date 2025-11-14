@@ -703,17 +703,25 @@ def cv_management_tab_content():
     # Function to handle adding the certification entry
     def add_certification_entry():
         title_val = st.session_state.get("mini_cert_title_key", "").strip()
-        # Changed from selectbox to text_input for dynamic entry:
-        given_by_val = st.session_state.get("mini_cert_given_by_key", "").strip()
+        # Use the value determined by the selectbox/text input combo
+        given_by_select_val = st.session_state.get("mini_cert_given_by_select_key", "").strip()
+        given_by_other_val = st.session_state.get("mini_cert_given_by_other_key", "").strip()
         issue_date_val = st.session_state.get("mini_cert_issue_date_key", str(date.today().year)).strip()
         
-        if not title_val or not given_by_val:
+        # Determine final given_by value
+        final_given_by = ""
+        if given_by_select_val == "Other (Specify Below)":
+            final_given_by = given_by_other_val
+        else:
+            final_given_by = given_by_select_val
+        
+        if not title_val or not final_given_by:
             st.error("Please fill in **Certification Title** and **Issuing Organization** before adding.")
             return
 
         new_entry = {
             "title": title_val,
-            "given_by": given_by_val,
+            "given_by": final_given_by,
             "issue_date": issue_date_val
         }
         
@@ -721,7 +729,9 @@ def cv_management_tab_content():
         
         # Clear form input fields
         st.session_state["mini_cert_title_key"] = ""
-        st.session_state["mini_cert_given_by_key"] = "" # Clear the new text input
+        # Reset selectbox to default
+        st.session_state["mini_cert_given_by_select_key"] = "Amazon Web Services (AWS)"
+        st.session_state["mini_cert_given_by_other_key"] = ""
         st.session_state["mini_cert_issue_date_key"] = str(date.today().year) # Reset to default year
         
         st.toast(f"Certificate: {new_entry['title']} added.")
@@ -734,15 +744,34 @@ def cv_management_tab_content():
             st.toast(f"Certificate '{removed_title}' removed.")
             st.rerun()
 
+    
+    common_cert_providers = [
+        "Amazon Web Services (AWS)", 
+        "Microsoft (Azure, MS)", 
+        "Google Cloud Platform (GCP)", 
+        "Project Management Institute (PMI)", 
+        "CompTIA", 
+        "Cisco",
+        "Coursera",
+        "edX",
+        "Other (Specify Below)"
+    ]
+
     with st.form("add_cert_form"):
         st.markdown("##### New Certification Entry")
         
-        col_t, col_g = st.columns(2)
-        with col_t:
-            st.text_input("Certification Title", key="mini_cert_title_key", placeholder="e.g., Google Cloud Architect", value=st.session_state.get("mini_cert_title_key", ""))
-        with col_g:
-            # UPDATED: Text input for dynamic entry of 'Given By' name
-            st.text_input("Issuing Organization (Given By)", key="mini_cert_given_by_key", placeholder="e.g., Coursera, AWS, PMI", value=st.session_state.get("mini_cert_given_by_key", ""))
+        st.text_input("Certification Title", key="mini_cert_title_key", placeholder="e.g., Google Cloud Architect", value=st.session_state.get("mini_cert_title_key", ""))
+
+        # Issuing Organization Selectbox
+        selected_provider = st.selectbox(
+            "Issuing Organization (Select common providers or 'Other')",
+            options=common_cert_providers,
+            key="mini_cert_given_by_select_key"
+        )
+        
+        # Conditional Text Input for "Other"
+        if selected_provider == "Other (Specify Below)":
+            st.text_input("Enter Issuing Organization Name", key="mini_cert_given_by_other_key", placeholder="e.g., IBM, Udemy, custom organization", value=st.session_state.get("mini_cert_given_by_other_key", ""))
             
         col_d, _ = st.columns(2)
         with col_d:
@@ -1056,9 +1085,10 @@ def candidate_dashboard():
     if "mini_edu_score_key" not in st.session_state: st.session_state["mini_edu_score_key"] = ""
     if "mini_edu_type_key" not in st.session_state: st.session_state["mini_edu_type_key"] = "CGPA"
     
-    # Certification form keys (Updated to reflect text input for 'given_by')
+    # Certification form keys (UPDATED)
     if "mini_cert_title_key" not in st.session_state: st.session_state["mini_cert_title_key"] = ""
-    if "mini_cert_given_by_key" not in st.session_state: st.session_state["mini_cert_given_by_key"] = "" # Use empty string for text input
+    if "mini_cert_given_by_select_key" not in st.session_state: st.session_state["mini_cert_given_by_select_key"] = "Amazon Web Services (AWS)" # Default value
+    if "mini_cert_given_by_other_key" not in st.session_state: st.session_state["mini_cert_given_by_other_key"] = ""
     if "mini_cert_issue_date_key" not in st.session_state: st.session_state["mini_cert_issue_date_key"] = str(date.today().year)
     
     # Experience form keys
