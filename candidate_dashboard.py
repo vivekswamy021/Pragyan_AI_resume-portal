@@ -551,8 +551,7 @@ def generate_and_display_cv(cv_name):
 def tab_cv_management():
     st.header("📊 CV Management")
     
-    if "managed_cvs" not in st.session_state:
-        st.session_state.managed_cvs = {} 
+    # Initialization for list-based state (done here for tab scope)
     if "form_education" not in st.session_state:
         st.session_state.form_education = []
     if "form_experience" not in st.session_state: 
@@ -561,8 +560,6 @@ def tab_cv_management():
         st.session_state.form_certifications = []
     if "form_projects" not in st.session_state: 
         st.session_state.form_projects = []
-    if "show_cv_output" not in st.session_state:
-        st.session_state.show_cv_output = None # Stores the name of the CV to display
 
     tab_upload, tab_form, tab_view = st.tabs(["Upload & Parse Resume", "Prepare your CV (Form-Based)", "View Saved CVs"])
 
@@ -614,46 +611,32 @@ def tab_cv_management():
         st.markdown("### Prepare your CV (Form-Based)")
         st.caption("Manually enter your CV details. This will be saved as a structured JSON CV.")
         
+        # Ensure the CV name key is stable
         cv_key_name = st.text_input("**Name this new CV (e.g., 'Manual 2025 CV'):**", key="form_cv_key_name")
 
         # --- 1. Personal Details Form ---
         st.markdown("#### 1. Personal & Summary Details")
         
-        # Use st.session_state to hold the values explicitly if they need to be accessed
-        # outside the button click scope or across reruns. 
-        # Standard input widgets *should* persist state by key, but we ensure it.
-        if "form_name_value" not in st.session_state: st.session_state.form_name_value = ""
-        if "form_email_value" not in st.session_state: st.session_state.form_email_value = ""
-        # ... (initialize other personal detail values if needed)
-        
+        # The key names defined in candidate_dashboard() are used here
         col_name, col_email = st.columns(2)
         with col_name:
-            # We link the input directly to the session state key here
             st.text_input("Full Name", key="form_name_value")
-            # The actual value used in the logic must be read from the session state
-            form_name = st.session_state.form_name_value 
         with col_email:
             st.text_input("Email", key="form_email_value")
-            form_email = st.session_state.form_email_value
             
         col_phone, col_linkedin, col_github = st.columns(3)
         with col_phone:
             st.text_input("Phone Number", key="form_phone_value")
-            form_phone = st.session_state.form_phone_value
         with col_linkedin:
             st.text_input("LinkedIn Link", key="form_linkedin_value")
-            form_linkedin = st.session_state.form_linkedin_value
         with col_github:
             st.text_input("GitHub Link", key="form_github_value")
-            form_github = st.session_state.form_github_value
             
         st.text_area("Career Summary / Objective (3-4 sentences)", height=100, key="form_summary_value")
-        form_summary = st.session_state.form_summary_value
 
         # --- 2. Skills ---
         st.markdown("#### 2. Skills")
         st.text_area("Skills (Enter one skill per line)", height=100, key="form_skills_value")
-        form_skills = st.session_state.form_skills_value
         
         # --- 3. Experience ---
         st.markdown("#### 3. Experience")
@@ -863,7 +846,6 @@ def tab_cv_management():
             key="form_strengths_input",
             help="E.g., Problem-Solving, Team Leadership, Adaptability, Communication"
         )
-        form_strengths = st.session_state.form_strengths_input
         
         # --- Final Save and View Buttons ---
         st.markdown("---")
@@ -872,16 +854,17 @@ def tab_cv_management():
         
         with col_generate:
             if st.button("💾 **Generate & Save CV**", type="primary", use_container_width=True):
-                # FIX: Read the form_name value directly from st.session_state
-                # This ensures the value persists even if the input variable itself is re-evaluated.
+                # FIX: Read all personal detail values directly from st.session_state
+                # and strip them for validation
                 current_form_name = st.session_state.get('form_name_value', '').strip()
                 
                 if not cv_key_name.strip():
                     st.error("Please provide a name for this new CV.")
                 elif not current_form_name:
-                     st.error("Please enter your Full Name.") # This is the validation check
+                     # This validation now uses the persistent state value
+                     st.error("Please enter your Full Name.") 
                 else:
-                    # Compile the structured data
+                    # Compile the structured data using session state values
                     final_cv_data = {
                         "name": current_form_name,
                         "email": st.session_state.get('form_email_value', '').strip(),
@@ -894,21 +877,14 @@ def tab_cv_management():
                         "experience": experience_list, 
                         "certifications": certifications_list, 
                         "projects": projects_list,
-                        "strength": [s.strip() for s in form_strengths.split('\n') if s.strip()] 
+                        "strength": [s.strip() for s in st.session_state.get('form_strengths_input', '').split('\n') if s.strip()] 
                     }
                     
                     st.session_state.managed_cvs[cv_key_name] = final_cv_data
                     st.session_state.current_resume_name = cv_key_name
                     st.session_state.show_cv_output = cv_key_name # Set to show the generated CV
                     
-                    # Clear the temporary form states
-                    # st.session_state.form_education = [] 
-                    # st.session_state.form_experience = [] 
-                    # st.session_state.form_certifications = []
-                    # st.session_state.form_projects = [] 
-                    
                     st.success(f"🎉 CV **'{cv_key_name}'** created from form and saved!")
-                    # Rerun to clear any list builder forms that rely on state and display the view
                     st.rerun() 
         
         with col_view:
@@ -1274,15 +1250,13 @@ def candidate_dashboard():
     if "candidate_results" not in st.session_state: st.session_state.candidate_results = []
     if "current_resume" not in st.session_state: st.session_state.current_resume = None
     if "manual_education" not in st.session_state: st.session_state.manual_education = [] # Temp for Analyzer
-    if "form_education" not in st.session_state: st.session_state.form_education = [] # Temp for CV Form Builder Education
-    if "form_experience" not in st.session_state: st.session_state.form_experience = [] # Temp for CV Form Builder Experience
-    if "form_certifications" not in st.session_state: st.session_state.form_certifications = [] # Temp for CV Form Builder Certifications
-    if "form_projects" not in st.session_state: st.session_state.form_projects = [] # Temp for CV Form Builder Projects
     if "managed_cvs" not in st.session_state: st.session_state.managed_cvs = {} 
     if "current_resume_name" not in st.session_state: st.session_state.current_resume_name = None 
     if "show_cv_output" not in st.session_state: st.session_state.show_cv_output = None 
     
-    # Initialize keys for personal details to ensure stability
+    # Initialize keys for personal details to ensure stability and avoid the "Full Name" error
+    # We initialize all relevant input keys here.
+    if "form_cv_key_name" not in st.session_state: st.session_state.form_cv_key_name = ""
     if "form_name_value" not in st.session_state: st.session_state.form_name_value = ""
     if "form_email_value" not in st.session_state: st.session_state.form_email_value = ""
     if "form_phone_value" not in st.session_state: st.session_state.form_phone_value = ""
