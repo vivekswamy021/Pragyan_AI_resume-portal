@@ -274,7 +274,7 @@ def add_education_entry(degree, college, university, date_from, date_to, state_k
 
 def add_experience_entry(company, role, ctc, project, date_from, date_to, state_key='form_experience'):
     """
-    Callback function to add a structured experience entry to session state. (NEW FUNCTION)
+    Callback function to add a structured experience entry to session state.
     """
     if not company or not role or not date_from or not date_to:
         st.error("Please fill in **Company Name**, **Role**, and **Dates**.")
@@ -294,6 +294,29 @@ def add_experience_entry(company, role, ctc, project, date_from, date_to, state_
     st.session_state[state_key].append(entry)
     st.toast(f"Added Experience: {role} at {company}")
 
+def add_certification_entry(name, title, given_by, received_by, course, date_val, state_key='form_certifications'):
+    """
+    Callback function to add a structured certification entry to session state. (NEW FUNCTION)
+    """
+    if not name or not title or not given_by or not course:
+        st.error("Please fill in **Name**, **Title**, **Given By**, and **Course**.")
+        return
+        
+    entry = {
+        "name": name,
+        "title": title,
+        "given_by": given_by,
+        "received_by_name": received_by if received_by else "N/A",
+        "course": course,
+        "date_received": date_val.strftime("%Y-%m-%d")
+    }
+    
+    if state_key not in st.session_state:
+        st.session_state[state_key] = []
+        
+    st.session_state[state_key].append(entry)
+    st.toast(f"Added Certification: {name} ({title})")
+
 
 # -------------------------
 # TAB FUNCTIONS
@@ -306,8 +329,10 @@ def tab_cv_management():
         st.session_state.managed_cvs = {} 
     if "form_education" not in st.session_state:
         st.session_state.form_education = []
-    if "form_experience" not in st.session_state: # NEW State for experience builder
+    if "form_experience" not in st.session_state: 
         st.session_state.form_experience = []
+    if "form_certifications" not in st.session_state: # NEW State for certifications builder
+        st.session_state.form_certifications = []
 
     tab_upload, tab_form, tab_view = st.tabs(["Upload & Parse Resume", "Prepare your CV (Form-Based)", "View Saved CVs"])
 
@@ -361,7 +386,7 @@ def tab_cv_management():
         
         cv_key_name = st.text_input("**Name this new CV (e.g., 'Manual 2025 CV'):**", key="form_cv_key_name")
 
-        # --- Personal Details Form ---
+        # --- 1. Personal Details Form ---
         st.markdown("#### 1. Personal & Summary Details")
         
         col_name, col_email = st.columns(2)
@@ -380,12 +405,11 @@ def tab_cv_management():
             
         form_summary = st.text_area("Career Summary / Objective (3-4 sentences)", height=100, key="form_summary")
 
+        # --- 2. Skills ---
         st.markdown("#### 2. Skills")
         form_skills = st.text_area("Skills (Enter one skill per line)", height=100, key="form_skills")
         
-        # -----------------------------
-        # NEW: EXPERIENCE SECTION
-        # -----------------------------
+        # --- 3. Experience ---
         st.markdown("#### 3. Experience")
         
         with st.form("form_experience_entry", clear_on_submit=True):
@@ -425,11 +449,10 @@ def tab_cv_management():
                 st.code(f"{entry['role']} at {entry['company']} ({entry['dates']})", language="text")
         else:
             experience_list = []
-        # -----------------------------
         
+        # --- 4. Education ---
         st.markdown("#### 4. Education")
 
-        # --- Education Form Repeater ---
         with st.form("form_education_entry", clear_on_submit=True):
             col_degree, col_college = st.columns(2)
             with col_degree:
@@ -463,6 +486,48 @@ def tab_cv_management():
         else:
             education_list = []
         
+        # -----------------------------
+        # NEW: CERTIFICATIONS SECTION
+        # -----------------------------
+        st.markdown("#### 5. Certifications")
+        
+        with st.form("form_certification_entry", clear_on_submit=True):
+            col_cert_name, col_cert_title = st.columns(2)
+            with col_cert_name:
+                new_cert_name = st.text_input("Certification Name (e.g., AWS Certified)", key="form_new_cert_name")
+            with col_cert_title:
+                new_cert_title = st.text_input("Title (e.g., Solutions Architect - Associate)", key="form_new_cert_title")
+                
+            col_given, col_received = st.columns(2)
+            with col_given:
+                new_given_by = st.text_input("Given By (Issuing Authority)", key="form_new_given_by")
+            with col_received:
+                new_received_by = st.text_input("Received By Name (Optional)", key="form_new_received_by")
+                
+            new_course = st.text_input("Related Course/Training (Optional)", key="form_new_course")
+
+            new_date_received = st.date_input("Date Received", value=date.today(), key="form_new_date_received")
+
+            if st.form_submit_button("Add Certification to CV"):
+                add_certification_entry(
+                    new_cert_name.strip(), 
+                    new_cert_title.strip(), 
+                    new_given_by.strip(), 
+                    new_received_by.strip(),
+                    new_course.strip(),
+                    new_date_received,
+                    state_key='form_certifications'
+                )
+
+        if st.session_state.form_certifications:
+            st.markdown("##### Current Certification Entries:")
+            certifications_list = st.session_state.form_certifications
+            for entry in certifications_list:
+                st.code(f"{entry['name']} - {entry['title']} (Issued: {entry['date_received']})", language="text")
+        else:
+            certifications_list = []
+        # -----------------------------
+        
         # --- Final Save Button ---
         st.markdown("---")
         if st.button("💾 **Save Form-Based CV**", type="primary", use_container_width=True):
@@ -480,16 +545,17 @@ def tab_cv_management():
                     "github": form_github.strip(),
                     "summary": form_summary.strip(),
                     "skills": [s.strip() for s in form_skills.split('\n') if s.strip()],
-                    "education": education_list,
-                    "experience": experience_list, # Include the new experience list
-                    "certifications": "N/A (Can be added manually in JSON if needed)",
+                    "education": education_list, 
+                    "experience": experience_list, 
+                    "certifications": certifications_list, # Include the new certifications list
                     "projects": "N/A (Can be added manually in JSON if needed)"
                 }
                 
                 st.session_state.managed_cvs[cv_key_name] = final_cv_data
                 st.session_state.current_resume_name = cv_key_name
-                st.session_state.form_education = [] # Clear the temporary education list
-                st.session_state.form_experience = [] # Clear the temporary experience list
+                st.session_state.form_education = [] # Clear the temporary states
+                st.session_state.form_experience = [] 
+                st.session_state.form_certifications = []
                 st.success(f"🎉 CV **'{cv_key_name}'** created from form and saved!")
                 st.rerun()
 
@@ -688,7 +754,7 @@ def tab_resume_analyzer():
                         "jd_role": jd_metadata.get('role', 'N/A'),
                         "overall_score": overall_score,
                         "match_report": match_analysis,
-                        "parsed_resume": active_cv_data # Still store the original parsed data
+                        "parsed_resume": active_cv_data 
                     }
                 else:
                     # If using fresh upload/paste, run the full parsing process
@@ -809,7 +875,7 @@ def candidate_dashboard():
     col_header, col_logout = st.columns([4, 1])
     with col_logout:
         if st.button("🚪 Log Out", use_container_width=True):
-            keys_to_delete = ['candidate_results', 'current_resume', 'manual_education', 'managed_cvs', 'current_resume_name', 'form_education', 'form_experience']
+            keys_to_delete = ['candidate_results', 'current_resume', 'manual_education', 'managed_cvs', 'current_resume_name', 'form_education', 'form_experience', 'form_certifications']
             for key in keys_to_delete:
                 if key in st.session_state:
                     del st.session_state[key]
@@ -823,7 +889,8 @@ def candidate_dashboard():
     if "current_resume" not in st.session_state: st.session_state.current_resume = None
     if "manual_education" not in st.session_state: st.session_state.manual_education = [] # Temp for Analyzer
     if "form_education" not in st.session_state: st.session_state.form_education = [] # Temp for CV Form Builder Education
-    if "form_experience" not in st.session_state: st.session_state.form_experience = [] # Temp for CV Form Builder Experience (NEW)
+    if "form_experience" not in st.session_state: st.session_state.form_experience = [] # Temp for CV Form Builder Experience
+    if "form_certifications" not in st.session_state: st.session_state.form_certifications = [] # Temp for CV Form Builder Certifications (NEW)
     if "managed_cvs" not in st.session_state: st.session_state.managed_cvs = {} 
     if "current_resume_name" not in st.session_state: st.session_state.current_resume_name = None 
 
