@@ -163,7 +163,7 @@ def save_form_cv():
          return
     
     # 1. Determine the CV key name
-    # Use the current active CV name if it exists and was created from the form.
+    # If a current name exists (meaning the user started from a form save or upload), use it.
     # Otherwise, create a new one based on the current full name and timestamp.
     
     cv_key_name = st.session_state.get('current_resume_name')
@@ -437,8 +437,252 @@ def generate_and_display_cv(cv_name):
 
 
 # -------------------------
-# TAB FUNCTIONS
+# CORE CV FORM FUNCTION (Previously tab_form content)
 # -------------------------
+
+def cv_form_content():
+    """Contains the logic for the manual CV form entry."""
+    st.markdown("### Prepare your CV (Form-Based)")
+    st.caption("Manually enter your CV details. Click **'Save Final CV Details'** at the bottom to save/update your structured CV.")
+    
+    # --- 1. Personal Details Form ---
+    st.markdown("#### 1. Personal & Summary Details")
+    
+    col_name, col_email = st.columns(2)
+    with col_name:
+        st.text_input("Full Name", key="form_name_value")
+    with col_email:
+        st.text_input("Email", key="form_email_value")
+        
+    col_phone, col_linkedin, col_github = st.columns(3)
+    with col_phone:
+        st.text_input("Phone Number", key="form_phone_value")
+    with col_linkedin:
+        st.text_input("LinkedIn Link", key="form_linkedin_value")
+    with col_github:
+        st.text_input("GitHub Link", key="form_github_value")
+        
+    st.text_area("Career Summary / Objective (3-4 sentences)", height=100, key="form_summary_value")
+    
+    st.markdown("---")
+
+    # --- 2. Skills ---
+    st.markdown("#### 2. Skills")
+    st.text_area("Skills (Enter one skill per line)", height=100, key="form_skills_value")
+    
+    # --- 3. Experience ---
+    st.markdown("#### 3. Experience")
+    
+    with st.form("form_experience_entry", clear_on_submit=True):
+        col_comp, col_role = st.columns(2)
+        with col_comp:
+            new_company = st.text_input("Company Name", key="form_new_company")
+        with col_role:
+            new_role = st.text_input("Role / Designation", key="form_new_role")
+        
+        col_ctc, col_proj = st.columns(2)
+        with col_ctc:
+            new_ctc = st.text_input("CTC (Optional)", key="form_new_ctc")
+        with col_proj:
+            new_project = st.text_input("Key Project / Main Focus", key="form_new_project")
+
+        col_from, col_to = st.columns(2)
+        with col_from:
+            new_exp_date_from = st.date_input("Date From (Start)", value=date(2020, 1, 1), key="form_new_exp_date_from")
+        with col_to:
+            new_exp_date_to = st.date_input("Date To (End/Present)", value=date.today(), key="form_new_exp_date_to")
+
+        if st.form_submit_button("Add Experience and Save CV"):
+            add_experience_entry(
+                new_company.strip(), 
+                new_role.strip(), 
+                new_ctc.strip(),
+                new_project.strip(),
+                new_exp_date_from, 
+                new_exp_date_to,
+                state_key='form_experience'
+            )
+            save_form_cv() # Save CV after adding entry
+
+    if st.session_state.form_experience:
+        st.markdown("##### Current Experience Entries:")
+        experience_list = st.session_state.form_experience
+        for i, entry in enumerate(experience_list):
+            col_exp, col_rem = st.columns([0.8, 0.2])
+            with col_exp:
+                st.code(f"{entry['role']} at {entry['company']} ({entry['dates']})", language="text")
+            with col_rem:
+                # Rerun will automatically update the view after removal
+                st.button(
+                    "Remove", 
+                    key=f"remove_exp_{i}", 
+                    on_click=remove_entry, 
+                    args=(i, 'form_experience', 'Experience'),
+                    type="secondary", 
+                    use_container_width=True
+                )
+    
+    # --- 4. Education ---
+    st.markdown("#### 4. Education")
+
+    with st.form("form_education_entry", clear_on_submit=True):
+        col_degree, col_college = st.columns(2)
+        with col_degree:
+            new_degree = st.text_input("Degree/Qualification", key="form_new_degree")
+        with col_college:
+            new_college = st.text_input("College/Institution Name", key="form_new_college")
+        
+        new_university = st.text_input("Affiliating University Name", key="form_new_university")
+
+        col_from, col_to = st.columns(2)
+        with col_from:
+            new_date_from = st.date_input("Date From (Start)", value=date(2018, 1, 1), key="form_new_date_from")
+        with col_to:
+            new_date_to = st.date_input("Date To (End/Expected)", value=date.today(), key="form_new_date_to")
+
+        if st.form_submit_button("Add Education and Save CV"):
+            add_education_entry(
+                new_degree.strip(), 
+                new_college.strip(), 
+                new_university.strip(), 
+                new_date_from, 
+                new_date_to,
+                state_key='form_education'
+            )
+            save_form_cv() # Save CV after adding entry
+
+    if st.session_state.form_education:
+        st.markdown("##### Current Education Entries:")
+        for i, entry in enumerate(st.session_state.form_education):
+            col_edu, col_rem = st.columns([0.8, 0.2])
+            with col_edu:
+                st.code(f"{entry['degree']} at {entry['college']} ({entry['dates']})", language="text")
+            with col_rem:
+                st.button(
+                    "Remove", 
+                    key=f"remove_edu_{i}", 
+                    on_click=remove_entry, 
+                    args=(i, 'form_education', 'Education'),
+                    type="secondary",
+                    use_container_width=True
+                )
+    
+    # -----------------------------
+    # 5. CERTIFICATIONS SECTION
+    # -----------------------------
+    st.markdown("#### 5. Certifications")
+    
+    with st.form("form_certification_entry", clear_on_submit=True):
+        col_cert_name, col_cert_title = st.columns(2)
+        with col_cert_name:
+            new_cert_name = st.text_input("Certification Name (e.g., AWS Certified)", key="form_new_cert_name")
+        with col_cert_title:
+            new_cert_title = st.text_input("Title (e.g., Solutions Architect - Associate)", key="form_new_cert_title")
+            
+        col_given, col_received = st.columns(2)
+        with col_given:
+            new_given_by = st.text_input("Given By (Issuing Authority)", key="form_new_given_by")
+        with col_received:
+            new_received_by = st.text_input("Received By Name (Optional)", key="form_new_received_by")
+            
+        new_course = st.text_input("Related Course/Training (Optional)", key="form_new_course")
+
+        new_date_received = st.date_input("Date Received", value=date.today(), key="form_new_date_received")
+
+        if st.form_submit_button("Add Certification and Save CV"):
+            add_certification_entry(
+                new_cert_name.strip(), 
+                new_cert_title.strip(), 
+                new_given_by.strip(), 
+                new_received_by.strip(),
+                new_course.strip(),
+                new_date_received,
+                state_key='form_certifications'
+            )
+            save_form_cv() # Save CV after adding entry
+
+    if st.session_state.form_certifications:
+        st.markdown("##### Current Certification Entries:")
+        for i, entry in enumerate(st.session_state.form_certifications):
+            col_cert, col_rem = st.columns([0.8, 0.2])
+            with col_cert:
+                st.code(f"{entry['name']} - {entry['title']} (Issued: {entry['date_received']})", language="text")
+            with col_rem:
+                st.button(
+                    "Remove", 
+                    key=f"remove_cert_{i}", 
+                    on_click=remove_entry, 
+                    args=(i, 'form_certifications', 'Certification'),
+                    type="secondary",
+                    use_container_width=True
+                )
+    
+    # -----------------------------
+    # 6. PROJECTS SECTION 
+    # -----------------------------
+    st.markdown("#### 6. Projects")
+    
+    with st.form("form_project_entry", clear_on_submit=True):
+        new_project_name = st.text_input("Project Name", key="form_new_project_name")
+        new_project_description = st.text_area("Description of Project", height=100, key="form_new_project_description")
+            
+        col_tech, col_link = st.columns(2)
+        with col_tech:
+            new_technologies = st.text_input("Technologies Used (Comma separated list, e.g., Python, SQL, Streamlit)", key="form_new_technologies")
+        with col_link:
+            new_app_link = st.text_input("App Link / Repository URL (Optional)", key="form_new_app_link")
+
+        if st.form_submit_button("Add Project and Save CV"):
+            add_project_entry(
+                new_project_name.strip(), 
+                new_project_description.strip(), 
+                new_technologies.strip(), 
+                new_app_link.strip(),
+                state_key='form_projects'
+            )
+            save_form_cv() # Save CV after adding entry
+
+    if st.session_state.form_projects:
+        st.markdown("##### Current Project Entries:")
+        
+        for i, entry in enumerate(st.session_state.form_projects):
+            with st.container(border=True):
+                st.markdown(f"**{i+1}. {entry['name']}**")
+                st.caption(f"Technologies: {', '.join(entry['technologies'])}")
+                st.markdown(f"Description: *{entry['description']}*")
+                if entry['app_link'] != "N/A":
+                    st.markdown(f"Link: [{entry['app_link']}]({entry['app_link']})")
+                
+                st.button(
+                    "Remove Project", 
+                    key=f"remove_project_{i}", 
+                    on_click=remove_entry, 
+                    args=(i, 'form_projects', 'Project'),
+                    type="secondary"
+                )
+    
+    # -----------------------------
+    # 7. STRENGTHS SECTION
+    # -----------------------------
+    st.markdown("#### 7. Strengths")
+    st.text_area(
+        "Your Key Strengths (Enter one strength or attribute per line)", 
+        height=100, 
+        key="form_strengths_input",
+        help="E.g., Problem-Solving, Team Leadership, Adaptability, Communication"
+    )
+    
+    # --- Final Save Button ---
+    st.markdown("---")
+    st.button("💾 **Save Final CV Details**", key="final_save_button", type="primary", use_container_width=True, on_click=save_form_cv)
+    
+    st.markdown("---")
+    
+    # --- CV Output Display Section ---
+    if st.session_state.show_cv_output:
+        generate_and_display_cv(st.session_state.show_cv_output)
+        st.markdown("---")
+
 
 def tab_cv_management():
     st.header("📊 CV Management")
@@ -453,337 +697,8 @@ def tab_cv_management():
     if "form_projects" not in st.session_state: 
         st.session_state.form_projects = []
 
-    tab_upload, tab_form, tab_view = st.tabs(["Upload & Parse Resume", "Prepare your CV (Form-Based)", "View Saved CVs"])
-
-    with tab_upload:
-        st.markdown("### Upload & Parse New CV")
-        st.caption("Upload a document, and the AI will extract structured data for management.")
-        
-        new_cv_file = st.file_uploader(
-            "Upload a PDF or DOCX Resume",
-            type=["pdf", "docx"],
-            key="new_cv_upload"
-        )
-
-        if new_cv_file:
-            cv_name = st.text_input("Name this CV version (e.g., 'Tech Resume')", 
-                                    value=new_cv_file.name.split('.')[0], key="upload_cv_name_input")
-            
-            if st.button(f"Save & Parse '{cv_name}'", type="primary", key="save_parsed_cv"):
-                if not GROQ_API_KEY:
-                    st.error("❌ AI Analysis is disabled. Cannot parse CV for storage.")
-                    return
-
-                with st.spinner(f"Parsing CV: {new_cv_file.name}..."):
-                    try:
-                        temp_dir = tempfile.mkdtemp()
-                        temp_path = os.path.join(temp_dir, new_cv_file.name)
-                        with open(temp_path, "wb") as f:
-                            f.write(new_cv_file.getbuffer())
-                        
-                        file_type = get_file_type(temp_path)
-                        text = extract_content(file_type, temp_path)
-                            
-                        parsed_data = parse_with_llm(text)
-
-                        if "error" in parsed_data:
-                            st.error(f"Parsing failed: {parsed_data.get('error', 'Unknown error')}")
-                        else:
-                            st.session_state.managed_cvs[cv_name] = parsed_data
-                            st.success(f"✅ CV **'{cv_name}'** successfully parsed and saved!")
-                            st.session_state.current_resume_name = cv_name
-                            st.rerun() 
-                            
-                    except Exception as e:
-                        st.error(f"An unexpected error occurred during parsing: {e}")
-                        st.code(traceback.format_exc())
-
-    with tab_form:
-        st.markdown("### Prepare your CV (Form-Based)")
-        st.caption("Manually enter your CV details. Click 'Save Final CV Details' at the bottom to save/update your structured CV.")
-        
-        # --- 1. Personal Details Form ---
-        st.markdown("#### 1. Personal & Summary Details")
-        
-        col_name, col_email = st.columns(2)
-        with col_name:
-            st.text_input("Full Name", key="form_name_value")
-        with col_email:
-            st.text_input("Email", key="form_email_value")
-            
-        col_phone, col_linkedin, col_github = st.columns(3)
-        with col_phone:
-            st.text_input("Phone Number", key="form_phone_value")
-        with col_linkedin:
-            st.text_input("LinkedIn Link", key="form_linkedin_value")
-        with col_github:
-            st.text_input("GitHub Link", key="form_github_value")
-            
-        st.text_area("Career Summary / Objective (3-4 sentences)", height=100, key="form_summary_value")
-        
-        # --- REMOVED: Simplified Save Button for changes in Personal/Summary ---
-        # st.button("💾 Save Details", type="primary", use_container_width=True, help="Save the current form data to the CV.", on_click=save_form_cv)
-        
-        st.markdown("---")
-
-        # --- 2. Skills ---
-        st.markdown("#### 2. Skills")
-        st.text_area("Skills (Enter one skill per line)", height=100, key="form_skills_value")
-        
-        # --- 3. Experience ---
-        st.markdown("#### 3. Experience")
-        
-        with st.form("form_experience_entry", clear_on_submit=True):
-            col_comp, col_role = st.columns(2)
-            with col_comp:
-                new_company = st.text_input("Company Name", key="form_new_company")
-            with col_role:
-                new_role = st.text_input("Role / Designation", key="form_new_role")
-            
-            col_ctc, col_proj = st.columns(2)
-            with col_ctc:
-                new_ctc = st.text_input("CTC (Optional)", key="form_new_ctc")
-            with col_proj:
-                new_project = st.text_input("Key Project / Main Focus", key="form_new_project")
-
-            col_from, col_to = st.columns(2)
-            with col_from:
-                new_exp_date_from = st.date_input("Date From (Start)", value=date(2020, 1, 1), key="form_new_exp_date_from")
-            with col_to:
-                new_exp_date_to = st.date_input("Date To (End/Present)", value=date.today(), key="form_new_exp_date_to")
-
-            if st.form_submit_button("Add Experience and Save CV"):
-                add_experience_entry(
-                    new_company.strip(), 
-                    new_role.strip(), 
-                    new_ctc.strip(),
-                    new_project.strip(),
-                    new_exp_date_from, 
-                    new_exp_date_to,
-                    state_key='form_experience'
-                )
-                save_form_cv() # Save CV after adding entry
-
-        if st.session_state.form_experience:
-            st.markdown("##### Current Experience Entries:")
-            experience_list = st.session_state.form_experience
-            for i, entry in enumerate(experience_list):
-                col_exp, col_rem = st.columns([0.8, 0.2])
-                with col_exp:
-                    st.code(f"{entry['role']} at {entry['company']} ({entry['dates']})", language="text")
-                with col_rem:
-                    # Rerun will automatically update the view after removal
-                    st.button(
-                        "Remove", 
-                        key=f"remove_exp_{i}", 
-                        on_click=remove_entry, 
-                        args=(i, 'form_experience', 'Experience'),
-                        type="secondary", 
-                        use_container_width=True
-                    )
-        
-        # --- 4. Education ---
-        st.markdown("#### 4. Education")
-
-        with st.form("form_education_entry", clear_on_submit=True):
-            col_degree, col_college = st.columns(2)
-            with col_degree:
-                new_degree = st.text_input("Degree/Qualification", key="form_new_degree")
-            with col_college:
-                new_college = st.text_input("College/Institution Name", key="form_new_college")
-            
-            new_university = st.text_input("Affiliating University Name", key="form_new_university")
-
-            col_from, col_to = st.columns(2)
-            with col_from:
-                new_date_from = st.date_input("Date From (Start)", value=date(2018, 1, 1), key="form_new_date_from")
-            with col_to:
-                new_date_to = st.date_input("Date To (End/Expected)", value=date.today(), key="form_new_date_to")
-
-            if st.form_submit_button("Add Education and Save CV"):
-                add_education_entry(
-                    new_degree.strip(), 
-                    new_college.strip(), 
-                    new_university.strip(), 
-                    new_date_from, 
-                    new_date_to,
-                    state_key='form_education'
-                )
-                save_form_cv() # Save CV after adding entry
-
-        if st.session_state.form_education:
-            st.markdown("##### Current Education Entries:")
-            for i, entry in enumerate(st.session_state.form_education):
-                col_edu, col_rem = st.columns([0.8, 0.2])
-                with col_edu:
-                    st.code(f"{entry['degree']} at {entry['college']} ({entry['dates']})", language="text")
-                with col_rem:
-                    st.button(
-                        "Remove", 
-                        key=f"remove_edu_{i}", 
-                        on_click=remove_entry, 
-                        args=(i, 'form_education', 'Education'),
-                        type="secondary",
-                        use_container_width=True
-                    )
-        
-        # -----------------------------
-        # 5. CERTIFICATIONS SECTION
-        # -----------------------------
-        st.markdown("#### 5. Certifications")
-        
-        with st.form("form_certification_entry", clear_on_submit=True):
-            col_cert_name, col_cert_title = st.columns(2)
-            with col_cert_name:
-                new_cert_name = st.text_input("Certification Name (e.g., AWS Certified)", key="form_new_cert_name")
-            with col_cert_title:
-                new_cert_title = st.text_input("Title (e.g., Solutions Architect - Associate)", key="form_new_cert_title")
-                
-            col_given, col_received = st.columns(2)
-            with col_given:
-                new_given_by = st.text_input("Given By (Issuing Authority)", key="form_new_given_by")
-            with col_received:
-                new_received_by = st.text_input("Received By Name (Optional)", key="form_new_received_by")
-                
-            new_course = st.text_input("Related Course/Training (Optional)", key="form_new_course")
-
-            new_date_received = st.date_input("Date Received", value=date.today(), key="form_new_date_received")
-
-            if st.form_submit_button("Add Certification and Save CV"):
-                add_certification_entry(
-                    new_cert_name.strip(), 
-                    new_cert_title.strip(), 
-                    new_given_by.strip(), 
-                    new_received_by.strip(),
-                    new_course.strip(),
-                    new_date_received,
-                    state_key='form_certifications'
-                )
-                save_form_cv() # Save CV after adding entry
-
-        if st.session_state.form_certifications:
-            st.markdown("##### Current Certification Entries:")
-            for i, entry in enumerate(st.session_state.form_certifications):
-                col_cert, col_rem = st.columns([0.8, 0.2])
-                with col_cert:
-                    st.code(f"{entry['name']} - {entry['title']} (Issued: {entry['date_received']})", language="text")
-                with col_rem:
-                    st.button(
-                        "Remove", 
-                        key=f"remove_cert_{i}", 
-                        on_click=remove_entry, 
-                        args=(i, 'form_certifications', 'Certification'),
-                        type="secondary",
-                        use_container_width=True
-                    )
-        
-        # -----------------------------
-        # 6. PROJECTS SECTION 
-        # -----------------------------
-        st.markdown("#### 6. Projects")
-        
-        with st.form("form_project_entry", clear_on_submit=True):
-            new_project_name = st.text_input("Project Name", key="form_new_project_name")
-            new_project_description = st.text_area("Description of Project", height=100, key="form_new_project_description")
-                
-            col_tech, col_link = st.columns(2)
-            with col_tech:
-                new_technologies = st.text_input("Technologies Used (Comma separated list, e.g., Python, SQL, Streamlit)", key="form_new_technologies")
-            with col_link:
-                new_app_link = st.text_input("App Link / Repository URL (Optional)", key="form_new_app_link")
-
-            if st.form_submit_button("Add Project and Save CV"):
-                add_project_entry(
-                    new_project_name.strip(), 
-                    new_project_description.strip(), 
-                    new_technologies.strip(), 
-                    new_app_link.strip(),
-                    state_key='form_projects'
-                )
-                save_form_cv() # Save CV after adding entry
-
-        if st.session_state.form_projects:
-            st.markdown("##### Current Project Entries:")
-            
-            for i, entry in enumerate(st.session_state.form_projects):
-                with st.container(border=True):
-                    st.markdown(f"**{i+1}. {entry['name']}**")
-                    st.caption(f"Technologies: {', '.join(entry['technologies'])}")
-                    st.markdown(f"Description: *{entry['description']}*")
-                    if entry['app_link'] != "N/A":
-                        st.markdown(f"Link: [{entry['app_link']}]({entry['app_link']})")
-                    
-                    st.button(
-                        "Remove Project", 
-                        key=f"remove_project_{i}", 
-                        on_click=remove_entry, 
-                        args=(i, 'form_projects', 'Project'),
-                        type="secondary"
-                    )
-        
-        # -----------------------------
-        # 7. STRENGTHS SECTION
-        # -----------------------------
-        st.markdown("#### 7. Strengths")
-        st.text_area(
-            "Your Key Strengths (Enter one strength or attribute per line)", 
-            height=100, 
-            key="form_strengths_input",
-            help="E.g., Problem-Solving, Team Leadership, Adaptability, Communication"
-        )
-        
-        # --- Final Save Button ---
-        st.markdown("---")
-        st.button("💾 **Save Final CV Details**", key="final_save_button", type="primary", use_container_width=True, on_click=save_form_cv)
-        
-        st.markdown("---")
-        
-        # --- CV Output Display Section ---
-        if st.session_state.show_cv_output:
-            generate_and_display_cv(st.session_state.show_cv_output)
-            st.markdown("---")
-
-
-    with tab_view:
-        st.markdown("### View Saved CVs")
-        if not st.session_state.managed_cvs:
-            st.info("No CVs saved yet. Upload or create one in the other tabs.")
-        else:
-            cv_names = list(st.session_state.managed_cvs.keys())
-            
-            default_index = cv_names.index(st.session_state.current_resume_name) if st.session_state.get('current_resume_name') in cv_names else 0
-
-            selected_cv = st.selectbox("Select a CV to view details:", cv_names, index=default_index, key="cv_select_view")
-            
-            if selected_cv:
-                data = st.session_state.managed_cvs[selected_cv]
-                st.markdown(f"**Currently Active CV (from form/upload):** `{st.session_state.get('current_resume_name', 'None')}`")
-                st.markdown(f"**Name:** {data.get('name', 'N/A')}")
-                st.markdown(f"**Summary:** *{data.get('summary', 'N/A')}*")
-                
-                col_actions_1, col_actions_2 = st.columns(2)
-                with col_actions_1:
-                    if st.button("View/Download", key="view_cv_from_list", use_container_width=True):
-                        st.session_state.show_cv_output = selected_cv
-                        st.rerun()
-                with col_actions_2:
-                    if st.button("Delete CV", key="delete_cv", use_container_width=True):
-                        del st.session_state.managed_cvs[selected_cv]
-                        if 'current_resume_name' in st.session_state and st.session_state.current_resume_name == selected_cv:
-                            del st.session_state.current_resume_name
-                        if 'show_cv_output' in st.session_state and st.session_state.show_cv_output == selected_cv:
-                            del st.session_state.show_cv_output
-                        st.warning(f"CV **'{selected_cv}'** deleted.")
-                        st.rerun()
-                
-                st.markdown("---")
-                
-                # Dynamic View when clicking 'View/Download' from this tab
-                if st.session_state.show_cv_output == selected_cv:
-                    generate_and_display_cv(selected_cv)
-                else:
-                    with st.expander(f"View Raw JSON Data for '{selected_cv}'"):
-                        st.json(data)
+    # Directly show the CV form content since other tabs are removed
+    cv_form_content()
 
 
 # -------------------------
@@ -792,7 +707,7 @@ def tab_cv_management():
 
 def candidate_dashboard():
     st.title("🧑‍💻 Candidate Dashboard")
-    st.caption("Manage your CVs using Structured Form Data and Parsing.")
+    st.caption("Manage your CV using the Structured Form Data.")
     
     col_header, col_logout = st.columns([4, 1])
     with col_logout:
@@ -822,7 +737,7 @@ def candidate_dashboard():
     if "form_skills_value" not in st.session_state: st.session_state.form_skills_value = ""
     if "form_strengths_input" not in st.session_state: st.session_state.form_strengths_input = ""
 
-    # --- Main Tabs ---
+    # --- Main Content ---
     tab_cv_management()
 
 
