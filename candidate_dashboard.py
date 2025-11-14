@@ -17,10 +17,10 @@ from datetime import datetime
 def generate_pdf_mock(cv_data, cv_name):
     """Mocks the generation of a PDF file and returns its path/bytes."""
     
-    # --- FIX APPLIED HERE: Remove fpdf import and use a hardcoded warning ---
-    warning_message = f"🚨 PDF generation is mocked! The actual library (fpdf) is not installed. Cannot generate PDF for {cv_name}. Download JSON instead."
+    # Returning a mock PDF that contains a warning message.
+    warning_message = f"🚨 PDF generation is mocked! The actual library (fpdf) is not installed. Cannot generate PDF for {cv_name}. Download JSON or Markdown instead."
     
-    # Return the warning message encoded as bytes to satisfy the expected return type
+    # We return the warning message encoded as bytes. Streamlit can download this as a file.
     return warning_message.encode('utf-8') 
 
 # -------------------------
@@ -380,13 +380,23 @@ def generate_and_display_cv(cv_name):
     with tab_md:
         md_output = format_cv_to_markdown(cv_data, cv_name)
         st.markdown(md_output)
+        
+        # ADDED: Download button for Markdown file
+        st.download_button(
+            label="Download Markdown (.md)",
+            data=md_output.encode('utf-8'),
+            file_name=f"{cv_name}_cv.md",
+            mime="text/markdown",
+            key=f"download_md_btn_{cv_name}" 
+        )
 
     # --- JSON View ---
     with tab_json:
-        st.code(json.dumps(cv_data, indent=4), language="json")
+        json_output = json.dumps(cv_data, indent=4)
+        st.code(json_output, language="json")
         st.download_button(
-            label="Download JSON",
-            data=json.dumps(cv_data, indent=4),
+            label="Download JSON (.json)",
+            data=json_output,
             file_name=f"{cv_name}_data.json",
             mime="application/json",
             key=f"download_json_btn_{cv_name}" 
@@ -401,16 +411,17 @@ def generate_and_display_cv(cv_name):
         if "PDF generation is mocked" in warning_check:
              st.warning(warning_check) 
         else:
-            # This path is hit only if fpdf was installed and the original logic worked. 
-            # Given the current fix, this block might be redundant but kept for completeness
+            # Fallback for when a real library might be present (removed fpdf import but kept generic structure)
             st.info("The PDF generation is a simplified mock. In a real app, a professional library would be used here.")
-            st.download_button(
-                label="Download CV as PDF",
-                data=pdf_bytes,
-                file_name=f"{cv_name}.pdf",
-                mime="application/pdf",
-                key=f"download_pdf_btn_{cv_name}"
-            )
+        
+        # Ensure download button is always present, even if content is just a warning message
+        st.download_button(
+            label="Download CV as PDF (Mock)",
+            data=pdf_bytes,
+            file_name=f"{cv_name}.pdf",
+            mime="application/pdf",
+            key=f"download_pdf_btn_{cv_name}"
+        )
 
 
 # -------------------------
