@@ -159,18 +159,18 @@ def save_form_cv():
     current_form_name = st.session_state.get('form_name_value', '').strip()
     
     if not current_form_name:
-         st.error("Please enter your Full Name to save the CV.") 
+         st.error("Please enter your **Full Name** to save the CV.") 
          return
     
     # 1. Determine the CV key name
-    # Use the current active CV name if it exists and wasn't uploaded/parsed.
+    # Use the current active CV name if it exists and was created from the form.
     # Otherwise, create a new one based on the current full name and timestamp.
     
     cv_key_name = st.session_state.get('current_resume_name')
-    if not cv_key_name or cv_key_name not in st.session_state.managed_cvs:
+    if not cv_key_name or (cv_key_name not in st.session_state.managed_cvs):
          # Create a unique, dated key name
          timestamp = datetime.now().strftime("%Y%m%d-%H%M")
-         cv_key_name = f"{current_form_name.replace(' ', '_')}_{timestamp}"
+         cv_key_name = f"{current_form_name.replace(' ', '_')}_Manual_CV_{timestamp}"
 
     # 2. Compile the structured data using session state values
     final_cv_data = {
@@ -500,7 +500,7 @@ def tab_cv_management():
 
     with tab_form:
         st.markdown("### Prepare your CV (Form-Based)")
-        st.caption("Manually enter your CV details. Click 'Save Details' to save/update your structured CV.")
+        st.caption("Manually enter your CV details. Click 'Save Final CV Details' at the bottom to save/update your structured CV.")
         
         # --- 1. Personal Details Form ---
         st.markdown("#### 1. Personal & Summary Details")
@@ -521,8 +521,8 @@ def tab_cv_management():
             
         st.text_area("Career Summary / Objective (3-4 sentences)", height=100, key="form_summary_value")
         
-        # --- Simplified Save Button for changes in Personal/Summary ---
-        st.button("💾 Save Details", type="primary", use_container_width=True, help="Save the current form data to the CV.", on_click=save_form_cv)
+        # --- REMOVED: Simplified Save Button for changes in Personal/Summary ---
+        # st.button("💾 Save Details", type="primary", use_container_width=True, help="Save the current form data to the CV.", on_click=save_form_cv)
         
         st.markdown("---")
 
@@ -813,7 +813,6 @@ def candidate_dashboard():
     if "show_cv_output" not in st.session_state: st.session_state.show_cv_output = None 
     
     # Initialize keys for personal details to ensure stability
-    # The 'form_cv_key_name' key is no longer needed but kept for cleanup in logout
     if "form_name_value" not in st.session_state: st.session_state.form_name_value = ""
     if "form_email_value" not in st.session_state: st.session_state.form_email_value = ""
     if "form_phone_value" not in st.session_state: st.session_state.form_phone_value = ""
@@ -822,12 +821,8 @@ def candidate_dashboard():
     if "form_summary_value" not in st.session_state: st.session_state.form_summary_value = ""
     if "form_skills_value" not in st.session_state: st.session_state.form_skills_value = ""
     if "form_strengths_input" not in st.session_state: st.session_state.form_strengths_input = ""
-    # Removing the redundant initialization logic for the removed key
-    # if "form_cv_key_name" not in st.session_state: st.session_state.form_cv_key_name = ""
-
 
     # --- Main Tabs ---
-    # Only the CV Management tab remains
     tab_cv_management()
 
 
