@@ -339,18 +339,27 @@ def add_project_entry(name, description, technologies, app_link, state_key='form
     st.session_state[state_key].append(entry)
     st.toast(f"Added Project: {name}")
 
-def remove_project_entry(index, state_key='form_projects'):
+def remove_entry(index, state_key, entry_type='Item'):
     """
-    Callback function to remove a project entry by index.
-    
-    FIX: Removed st.rerun() as deleting from session state triggers a re-render.
+    Generic callback function to remove an entry by index from a specified list in session state.
+    The change to session state triggers the re-render automatically.
     """
     if 0 <= index < len(st.session_state.get(state_key, [])):
-        removed_name = st.session_state[state_key][index]['name']
+        # Determine a useful name for the toast message
+        entry_data = st.session_state[state_key][index]
+        if state_key == 'form_education':
+            removed_name = entry_data.get('degree', entry_type)
+        elif state_key == 'form_experience':
+            removed_name = entry_data.get('role', entry_type)
+        elif state_key == 'form_certifications':
+            removed_name = entry_data.get('name', entry_type)
+        elif state_key == 'form_projects':
+            removed_name = entry_data.get('name', entry_type)
+        else:
+            removed_name = entry_type
+            
         del st.session_state[state_key][index]
-        st.toast(f"Removed Project: {removed_name}")
-        # The change to session state triggers the re-render automatically. 
-        # Calling st.rerun() here would result in the "no-op" warning.
+        st.toast(f"Removed {entry_type}: {removed_name}")
 
 
 # -------------------------
@@ -482,8 +491,19 @@ def tab_cv_management():
         if st.session_state.form_experience:
             st.markdown("##### Current Experience Entries:")
             experience_list = st.session_state.form_experience
-            for entry in experience_list:
-                st.code(f"{entry['role']} at {entry['company']} ({entry['dates']})", language="text")
+            for i, entry in enumerate(experience_list):
+                col_exp, col_rem = st.columns([0.8, 0.2])
+                with col_exp:
+                    st.code(f"{entry['role']} at {entry['company']} ({entry['dates']})", language="text")
+                with col_rem:
+                    st.button(
+                        "Remove", 
+                        key=f"remove_exp_{i}", 
+                        on_click=remove_entry, 
+                        args=(i, 'form_experience', 'Experience'),
+                        type="secondary", 
+                        use_container_width=True
+                    )
         else:
             experience_list = []
         
@@ -518,8 +538,19 @@ def tab_cv_management():
         if st.session_state.form_education:
             st.markdown("##### Current Education Entries:")
             education_list = st.session_state.form_education
-            for entry in education_list:
-                st.code(f"{entry['degree']} at {entry['college']} ({entry['dates']})", language="text")
+            for i, entry in enumerate(education_list):
+                col_edu, col_rem = st.columns([0.8, 0.2])
+                with col_edu:
+                    st.code(f"{entry['degree']} at {entry['college']} ({entry['dates']})", language="text")
+                with col_rem:
+                    st.button(
+                        "Remove", 
+                        key=f"remove_edu_{i}", 
+                        on_click=remove_entry, 
+                        args=(i, 'form_education', 'Education'),
+                        type="secondary",
+                        use_container_width=True
+                    )
         else:
             education_list = []
         
@@ -559,8 +590,19 @@ def tab_cv_management():
         if st.session_state.form_certifications:
             st.markdown("##### Current Certification Entries:")
             certifications_list = st.session_state.form_certifications
-            for entry in certifications_list:
-                st.code(f"{entry['name']} - {entry['title']} (Issued: {entry['date_received']})", language="text")
+            for i, entry in enumerate(certifications_list):
+                col_cert, col_rem = st.columns([0.8, 0.2])
+                with col_cert:
+                    st.code(f"{entry['name']} - {entry['title']} (Issued: {entry['date_received']})", language="text")
+                with col_rem:
+                    st.button(
+                        "Remove", 
+                        key=f"remove_cert_{i}", 
+                        on_click=remove_entry, 
+                        args=(i, 'form_certifications', 'Certification'),
+                        type="secondary",
+                        use_container_width=True
+                    )
         else:
             certifications_list = []
         
@@ -604,8 +646,8 @@ def tab_cv_management():
                     st.button(
                         "Remove Project", 
                         key=f"remove_project_{i}", 
-                        on_click=remove_project_entry, 
-                        args=(i, 'form_projects'),
+                        on_click=remove_entry, 
+                        args=(i, 'form_projects', 'Project'),
                         type="secondary"
                     )
         else:
