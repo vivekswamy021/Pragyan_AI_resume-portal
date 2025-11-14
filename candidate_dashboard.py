@@ -13,7 +13,7 @@ from datetime import date
 from streamlit.runtime.uploaded_file_manager import UploadedFile
 
 # -------------------------
-# CONFIGURATION & API SETUP 
+# CONFIGURATION & API SETUP (Necessary for standalone functions)
 # -------------------------
 
 GROQ_MODEL = "llama-3.1-8b-instant"
@@ -21,7 +21,7 @@ GROQ_MODEL = "llama-3.1-8b-instant"
 load_dotenv()
 GROQ_API_KEY = os.getenv('GROQ_API_KEY')
 
-# Initialize Groq Client or Mock Client
+# Initialize Groq Client or Mock Client (Must be present for function definitions)
 if not GROQ_API_KEY:
     class MockGroqClient:
         def chat(self):
@@ -33,7 +33,7 @@ if not GROQ_API_KEY:
 else:
     client = Groq(api_key=GROQ_API_KEY)
 
-# --- Utility Functions ---
+# --- Utility Functions (Duplicated/shared for both dashboards) ---
 
 def go_to(page_name):
     """Changes the current page in Streamlit's session state."""
@@ -48,7 +48,7 @@ def get_file_type(file_path):
     else: return 'txt' 
 
 def extract_content(file_type, file_path):
-    """Extracts text content from various file types."""
+    """Extracts text content from various file types (Simplified for resume parsing)."""
     text = ''
     try:
         if file_type == 'pdf':
@@ -60,6 +60,7 @@ def extract_content(file_type, file_path):
         elif file_type == 'docx':
             doc = docx.Document(file_path)
             text = '\n'.join([para.text for para in doc.paragraphs])
+        # Only PDF/DOCX/TXT are critical for resumes; ignoring XLSX for this context
 
         if not text.strip():
             return f"Error: {file_type.upper()} content extraction failed or file is empty."
@@ -93,26 +94,42 @@ def extract_jd_metadata(jd_text):
             temperature=0.0
         )
         content = response.choices[0].message.content.strip()
-        json_match = re.search(r'\{.*\}', content, re.DOTALL)
-        if json_match:
-            json_str = json_match.group(0).strip()
-            json_str = json_str.replace('```json', '').replace('```', '').strip()
+        
+        # --- FIX: Robust JSON Extraction ---
+        # Look for the JSON object, potentially wrapped in markdown
+        json_str = content
+        
+        # 1. Strip Markdown wrappers if present
+        json_str = re.sub(r'```json\s*', '', json_str, flags=re.IGNORECASE).strip()
+        json_str = re.sub(r'\s*```$', '', json_str).strip()
+        
+        # 2. Use non-greedy search for the primary object
+        # This regex looks for the content between the first { and the last }
+        # The original greedy approach (r'\{.*\}') is often the source of 'Extra data' error.
+        # This function should only parse the *entire* output if the LLM is compliant.
+        try:
             parsed = json.loads(json_str)
-        else:
-            raise json.JSONDecodeError("Could not isolate a valid JSON structure from LLM response.", content, 0)
+        except json.JSONDecodeError as e:
+            # If standard load fails, try a robust, non-greedy search for the object
+            json_match = re.search(r'\{.*?\}', json_str, re.DOTALL) 
+            if json_match:
+                parsed = json.loads(json_match.group(0).strip())
+            else:
+                raise json.JSONDecodeError(f"Could not isolate a valid JSON structure from LLM response. Detail: {e}", content, 0)
+        # --- END FIX ---
         
         return {
             "role": parsed.get("role", "General Analyst"),
             "key_skills": [s.strip() for s in parsed.get("key_skills", []) if isinstance(s, str)]
         }
 
-    except Exception:
-        return {"role": "General Analyst (LLM Error)", "key_skills": ["LLM Error", "Fallback"]}
+    except Exception as e:
+        return {"role": f"General Analyst (LLM Error - {e.__class__.__name__})", "key_skills": ["LLM Error", "Fallback"]}
 
 
 @st.cache_data(show_spinner="Analyzing content with Groq LLM...")
 def parse_with_llm(text):
-    """Sends resume text to the LLM for structured information extraction. **(FIXED)**"""
+    """Sends resume text to the LLM for structured information extraction. (FIX APPLIED HERE)"""
     if text.startswith("Error") or not GROQ_API_KEY:
         return {"error": "Parsing error or API key missing.", "raw_output": ""}
 
@@ -126,7 +143,7 @@ def parse_with_llm(text):
     
     Resume Text: {text}
     
-    Provide the output strictly as a JSON object.
+    Provide the output strictly as a JSON object, wrapped in ```json ... ``` markdown block.
     """
     content = ""
     parsed = {}
@@ -138,19 +155,30 @@ def parse_with_llm(text):
         )
         content = response.choices[0].message.content.strip()
         
-        # --- FIX: Robust JSON extraction using regex ---
-        json_match = re.search(r'\{.*\}', content, re.DOTALL)
-        if json_match:
-            json_str = json_match.group(0).strip()
-            json_str = json_str.replace('```json', '').replace('```', '').strip()
-            parsed = json.loads(json_str)
-        else:
-            # If regex fails to find valid JSON structure
-            raise json.JSONDecodeError("Could not isolate a valid JSON structure from LLM response.", content, 0)
-        # -----------------------------------------------
+        # --- FIX: Robust JSON Extraction to handle Extra data error ---
+        json_str = content
         
+        # 1. Strip Markdown wrappers
+        json_str = re.sub(r'```json\s*', '', json_str, flags=re.IGNORECASE).strip()
+        json_str = re.sub(r'\s*```$', '', json_str).strip()
+        
+        try:
+            parsed = json.loads(json_str)
+        except json.JSONDecodeError as e:
+            # The 'Extra data' error often occurs when the JSON is followed by text.
+            # We use a non-greedy regex to find the first complete JSON object from the start.
+            json_match = re.search(r'\{.*?\}', json_str, re.DOTALL) 
+            if json_match:
+                # Try loading the non-greedy match. This is the fix for 'Extra data'.
+                json_str_fixed = json_match.group(0).strip()
+                parsed = json.loads(json_str_fixed)
+            else:
+                # If even the non-greedy search fails, raise the original error details.
+                raise json.JSONDecodeError(f"Could not isolate a valid JSON structure. Original Error: {e.msg} at line {e.lineno}", content, 0)
+
+        # --- END FIX ---
+
     except Exception as e:
-        # Catch JSONDecodeError, Extra data error, etc., and report
         parsed = {"error": f"LLM error: {e}", "raw_output": content}
 
     return parsed
@@ -160,6 +188,7 @@ def evaluate_jd_fit(job_description, parsed_json):
     """Evaluates how well a resume fits a given job description, including section-wise scores."""
     if not GROQ_API_KEY or "error" in parsed_json: return "AI Evaluation Disabled or resume parsing failed."
     
+    # ... (Rest of the function remains the same as it relies on valid JSON input)
     relevant_resume_data = {
         'Skills': parsed_json.get('skills', 'Not found or empty'),
         'Experience': parsed_json.get('experience', 'Not found or empty'),
@@ -200,7 +229,10 @@ def evaluate_jd_fit(job_description, parsed_json):
 
 
 def parse_and_analyze_resume(file_input, jd_content, source_type='file', jd_name="Job Description"):
-    """Handles file/text input, parsing, and analysis for the candidate dashboard."""
+    """
+    Handles file/text input, parsing, and analysis for the candidate dashboard.
+    Returns a dictionary with results.
+    """
     text = None
     file_name = f"Resume ({date.today().strftime('%Y-%m-%d')})"
     
@@ -224,6 +256,7 @@ def parse_and_analyze_resume(file_input, jd_content, source_type='file', jd_name
         return {"error": text}
 
     # 1. Parse Resume
+    # This calls the fixed parse_with_llm function
     parsed_resume = parse_with_llm(text)
     
     if "error" in parsed_resume:
@@ -251,7 +284,9 @@ def parse_and_analyze_resume(file_input, jd_content, source_type='file', jd_name
 # --- Education Input Logic ---
 
 def add_education_entry(degree, college, university, date_from, date_to):
-    """Callback function to add a structured education entry to session state."""
+    """
+    Callback function to add a structured education entry to session state.
+    """
     if not degree or not college or not university:
         st.error("Please fill in Degree, College, and University.")
         return
@@ -276,6 +311,7 @@ def candidate_dashboard():
     col_header, col_logout = st.columns([4, 1])
     with col_logout:
         if st.button("🚪 Log Out", use_container_width=True):
+            # Clear candidate specific analysis data upon logout
             keys_to_delete = ['candidate_results', 'current_resume', 'manual_education']
             for key in keys_to_delete:
                 if key in st.session_state:
@@ -344,6 +380,7 @@ def candidate_dashboard():
 
             col_from, col_to = st.columns(2)
             with col_from:
+                # Default to a reasonable past date
                 new_date_from = st.date_input("Date From (Start)", value=date(2018, 1, 1), key="new_date_from")
             with col_to:
                 new_date_to = st.date_input("Date To (End/Expected)", value=date.today(), key="new_date_to")
@@ -362,12 +399,13 @@ def candidate_dashboard():
             st.markdown("##### Current Manually Added Education Entries:")
             for entry in st.session_state.manual_education:
                 st.code(entry, language="text")
+        # --- END Education Input Form ---
         
         st.markdown("---")
         
         st.markdown("### Step 2: Provide the Job Description (JD)")
         
-        # --- JD Input ---
+        # --- JD Input (Same as before) ---
         jd_method = st.radio(
             "Select JD Input Method", 
             ["Paste JD Text", "LinkedIn URL (Simulated)"],
@@ -389,18 +427,19 @@ def candidate_dashboard():
                  jd_name = st.text_input("Job Title for Tracking", value=first_line if len(first_line) < 50 else "Pasted JD", key="jd_title_input")
             
         elif jd_method == "LinkedIn URL (Simulated)":
-            st.warning("⚠️ **Note:** Due to platform restrictions, this is a **simulation**.")
+            st.warning("⚠️ **Note:** Due to platform restrictions, this is a **simulation**. The system extracts a sample JD based on the URL and cannot fetch the real content.")
             
             linkedin_url = st.text_input(
                 "Enter LinkedIn Job URL", 
-                placeholder="e.g., https://www.linkedin.com/jobs/view/...", 
+                placeholder="e.g., [https://www.linkedin.com/jobs/view/](https://www.linkedin.com/jobs/view/)...", 
                 key="linkedin_url_input"
             )
             
             if linkedin_url:
                 # Mock function for demonstration purposes
+                # Placeholder for a realistic JD mock
                 def extract_jd_from_linkedin_url(url: str) -> str:
-                    if "linkedin.com/jobs/" not in url:
+                    if "[linkedin.com/jobs/](https://linkedin.com/jobs/)" not in url:
                         return f"[Error: Not a valid LinkedIn Job URL format: {url}]"
 
                     job_title = "General Role"
@@ -452,6 +491,7 @@ def candidate_dashboard():
                 # --- Execution ---
                 with st.spinner(f"Running analysis against '{jd_name}'... This may take a moment."):
                     try:
+                        # Calls the fixed parser function
                         analysis_result = parse_and_analyze_resume(
                             resume_source, 
                             jd_content.strip(), 
@@ -591,7 +631,7 @@ def candidate_dashboard():
 
 
 # -------------------------
-# MOCK LOGIN AND MAIN APP LOGIC 
+# MOCK LOGIN AND MAIN APP LOGIC (For full execution)
 # -------------------------
 
 # Mock implementation of the Admin Dashboard 
