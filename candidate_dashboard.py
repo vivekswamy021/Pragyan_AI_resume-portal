@@ -372,9 +372,7 @@ def load_and_generate_cv_data():
     for the AI tools to use.
     """
     
-    # 1. Synchronization (Static Fields)
-    # The static fields are already synced to st.session_state.cv_form_data 
-    # as soon as they are changed, thanks to the use of st.text_input outside a form.
+    # 1. Synchronization (Static Fields are already synced by widget changes)
     
     # 2. Synchronization (Structured Dynamic Fields)
     st.session_state.cv_form_data['experience'] = st.session_state.cv_form_data.get('structured_experience', [])
@@ -412,13 +410,13 @@ def load_and_generate_cv_data():
     
 
 # ==============================================================================
-# 2. TAB CONTENT FUNCTIONS (Updated CV Management with Mini-Forms)
+# 2. TAB CONTENT FUNCTIONS (Updated CV Management with Integrated Mini-Forms)
 # ==============================================================================
 
 def cv_management_tab_content():
     st.header("📝 Prepare Your CV")
     st.markdown("### 1. Form Based CV Builder")
-    st.info("Fill out the details below. For dynamic sections (**Education, Certifications, Experience**), enter the details and click the **Add** button in the corresponding dedicated mini-form to save the entry.")
+    st.info("Fill out the details below. For dynamic sections (**Education, Certifications, Experience**), use the dedicated mini-forms and click the **Add** button for each entry.")
 
     # --- Session State Initialization for CV Builder ---
     default_parsed = {
@@ -521,64 +519,9 @@ def cv_management_tab_content():
     # Immediate synchronization of list-based inputs
     st.session_state.cv_form_data['skills'] = [s.strip() for s in new_skills_text.split('\n') if s.strip()]
     
-    # --- 3. DYNAMIC EDUCATION MANAGEMENT (Placeholder & Mini-Form) ---
+    # --- 3. DYNAMIC EDUCATION MANAGEMENT (INTEGRATED MINI-FORM) ---
     st.markdown("---")
     st.subheader("3. Dynamic Education Management")
-    st.info("Use the dedicated mini-form below to add each Education entry.")
-    
-    # --- 4. DYNAMIC PROFESSIONAL EXPERIENCE MANAGEMENT (Placeholder & Mini-Form) ---
-    st.markdown("---")
-    st.subheader("4. Dynamic Professional Experience Management")
-    st.info("Use the dedicated mini-form below to add each Experience entry.")
-    
-    # --- 5. DYNAMIC CERTIFICATIONS MANAGEMENT (Placeholder & Mini-Form) ---
-    st.markdown("---")
-    st.subheader("5. Dynamic Certifications Management")
-    st.info("Use the dedicated mini-form below to add each Certificate entry.")
-
-    # --- 6. PROJECTS (Must update state on change) ---
-    st.markdown("---")
-    st.subheader("6. Projects (One Item per Line)")
-    projects_text = "\n".join(st.session_state.cv_form_data.get('projects', []) if all(isinstance(p, str) for p in st.session_state.cv_form_data.get('projects', [])) else [])
-    new_projects_text = st.text_area(
-        "Projects (Name, Description, Technologies)", 
-        value=projects_text,
-        height=100,
-        key="cv_projects_input_form"
-    )
-    # Immediate synchronization of list-based inputs
-    st.session_state.cv_form_data['projects'] = [p.strip() for p in new_projects_text.split('\n') if p.strip()]
-
-    # --- 7. STRENGTHS (Must update state on change) ---
-    st.markdown("---")
-    st.subheader("7. Strengths (One Item per Line)")
-    strength_text = "\n".join(st.session_state.cv_form_data.get('strength', []) if all(isinstance(s, str) for s in st.session_state.cv_form_data.get('strength', [])) else [])
-    new_strength_text = st.text_area(
-        "Key Personal Qualities", 
-        value=strength_text,
-        height=70,
-        key="cv_strength_input_form"
-    )
-    # Immediate synchronization of list-based inputs
-    st.session_state.cv_form_data['strength'] = [s.strip() for s in new_strength_text.split('\n') if s.strip()]
-
-    # ==============================================================
-    # --- 8. GENERATE/LOAD BUTTON (Placed outside the form) ---
-    # ==============================================================
-    st.markdown("---")
-    st.subheader("8. Generate or Load ALL CV Data")
-    st.warning("Ensure you have added all Education, Certifications, and Experience entries using their respective **Add** buttons before clicking this final button!")
-
-    if st.button("Generate and Load ALL CV Data", type="primary", use_container_width=True):
-        if not st.session_state.cv_form_data.get('name') or not st.session_state.cv_form_data.get('email'):
-            st.error("Please fill in at least your **Full Name** and **Email Address**.")
-            return
-        load_and_generate_cv_data()
-        
-    
-    # ==============================================================
-    # --- 3A. DYNAMIC EDUCATION MANAGEMENT MINI-FORM ---
-    # ==============================================================
     
     # Function to handle adding the education entry
     def add_education_entry():
@@ -611,9 +554,6 @@ def cv_management_tab_content():
         st.session_state["mini_edu_degree_key"] = ""
         st.session_state["mini_edu_college_key"] = ""
         st.session_state["mini_edu_university_key"] = ""
-        # Reset the selectbox keys to their default values 
-        # Note: Select boxes reset their values on rerun to match the 'index' or 'value' given.
-        # We rely on the implicit rerun here which occurs when we change st.session_state.
         st.session_state["mini_edu_score_key"] = ""
         
         st.toast(f"Education: {new_entry['degree']} added.")
@@ -626,18 +566,19 @@ def cv_management_tab_content():
             st.toast(f"Education '{removed_degree}' removed.")
             st.rerun() 
 
-    # Find the Education header from the main form and place the mini-form right after it.
     st.markdown("<h5 style='color: #4CAF50;'>Education Entry Form</h5>", unsafe_allow_html=True)
     with st.form("add_education_form"):
         st.markdown("##### New Education Entry")
         
         col_d, col_c = st.columns(2)
         with col_d:
-            st.text_input("Degree/Qualification", key="mini_edu_degree_key", placeholder="e.g., M.Sc. Computer Science")
+            # Note: We must ensure the initial value or default value does not interfere with the clearing logic.
+            # Using placeholder and session state key handles this.
+            st.text_input("Degree/Qualification", key="mini_edu_degree_key", placeholder="e.g., M.Sc. Computer Science", value=st.session_state.get("mini_edu_degree_key", ""))
         with col_c:
-            st.text_input("College Name", key="mini_edu_college_key", placeholder="e.g., MIT, Chennai")
+            st.text_input("College Name", key="mini_edu_college_key", placeholder="e.g., MIT, Chennai", value=st.session_state.get("mini_edu_college_key", ""))
             
-        st.text_input("University Name", key="mini_edu_university_key", placeholder="e.g., Anna University")
+        st.text_input("University Name", key="mini_edu_university_key", placeholder="e.g., Anna University", value=st.session_state.get("mini_edu_university_key", ""))
         
         col_fy, col_ty = st.columns(2)
         with col_fy:
@@ -647,7 +588,7 @@ def cv_management_tab_content():
             
         col_s, col_st = st.columns([2, 1])
         with col_s:
-            st.text_input("CGPA or Score Value", key="mini_edu_score_key", placeholder="e.g., 8.5 or 90")
+            st.text_input("CGPA or Score Value", key="mini_edu_score_key", placeholder="e.g., 8.5 or 90", value=st.session_state.get("mini_edu_score_key", ""))
         with col_st:
             st.selectbox("Type", options=["CGPA", "Percentage", "Grade"], key="mini_edu_type_key")
             
@@ -670,9 +611,10 @@ def cv_management_tab_content():
         st.info("No education entries added yet.")
         
         
-    # ==============================================================
-    # --- 4A. DYNAMIC EXPERIENCE MANAGEMENT MINI-FORM ---
-    # ==============================================================
+    # --- 4. DYNAMIC PROFESSIONAL EXPERIENCE MANAGEMENT (INTEGRATED MINI-FORM) ---
+    st.markdown("---")
+    st.subheader("4. Dynamic Professional Experience Management")
+    
     st.markdown("<h5 style='color: #4CAF50;'>Professional Experience Entry Form</h5>", unsafe_allow_html=True)
     
     # Function to handle adding the experience entry
@@ -720,9 +662,9 @@ def cv_management_tab_content():
         
         col_c, col_r = st.columns(2)
         with col_c:
-            st.text_input("Company Name", key="mini_exp_company_key", placeholder="e.g., Google")
+            st.text_input("Company Name", key="mini_exp_company_key", placeholder="e.g., Google", value=st.session_state.get("mini_exp_company_key", ""))
         with col_r:
-            st.text_input("Role/Title", key="mini_exp_role_key", placeholder="e.g., Data Scientist")
+            st.text_input("Role/Title", key="mini_exp_role_key", placeholder="e.g., Data Scientist", value=st.session_state.get("mini_exp_role_key", ""))
 
         col_fy, col_ty, col_c3 = st.columns(3)
         with col_fy:
@@ -730,9 +672,9 @@ def cv_management_tab_content():
         with col_ty:
             st.selectbox("To Year", options=["Present"] + year_options, key="mini_exp_to_year_key")
         with col_c3:
-            st.text_input("CTC (Annual)", key="mini_exp_ctc_key", placeholder="e.g., $150k / 20L INR")
+            st.text_input("CTC (Annual)", key="mini_exp_ctc_key", placeholder="e.g., $150k / 20L INR", value=st.session_state.get("mini_exp_ctc_key", ""))
 
-        st.text_area("Key Responsibilities/Achievements (Brief summary)", height=70, key="mini_exp_responsibilities_key")
+        st.text_area("Key Responsibilities/Achievements (Brief summary)", height=70, key="mini_exp_responsibilities_key", value=st.session_state.get("mini_exp_responsibilities_key", ""))
             
         st.form_submit_button("➕ Add This Experience", on_click=add_experience_entry, use_container_width=True, type="secondary")
 
@@ -752,9 +694,9 @@ def cv_management_tab_content():
         st.info("No experience entries added yet.")
         
     
-    # ==============================================================
-    # --- 5A. DYNAMIC CERTIFICATIONS MANAGEMENT MINI-FORM (Order 3) ---
-    # ==============================================================
+    # --- 5. DYNAMIC CERTIFICATIONS MANAGEMENT (INTEGRATED MINI-FORM) ---
+    st.markdown("---")
+    st.subheader("5. Dynamic Certifications Management")
     
     st.markdown("<h5 style='color: #4CAF50;'>Certification Entry Form</h5>", unsafe_allow_html=True)
 
@@ -779,7 +721,7 @@ def cv_management_tab_content():
         # Clear form input fields
         st.session_state["mini_cert_title_key"] = ""
         st.session_state["mini_cert_given_by_key"] = ""
-        st.session_state["mini_cert_issue_date_key"] = str(date.today().year)
+        st.session_state["mini_cert_issue_date_key"] = str(date.today().year) # Reset to default year
         
         st.toast(f"Certificate: {new_entry['title']} added.")
         st.rerun() 
@@ -796,13 +738,13 @@ def cv_management_tab_content():
         
         col_t, col_g = st.columns(2)
         with col_t:
-            st.text_input("Certification Title", key="mini_cert_title_key", placeholder="e.g., Google Cloud Architect")
+            st.text_input("Certification Title", key="mini_cert_title_key", placeholder="e.g., Google Cloud Architect", value=st.session_state.get("mini_cert_title_key", ""))
         with col_g:
-            st.text_input("Issuing Organization", key="mini_cert_given_by_key", placeholder="e.g., Coursera, AWS, PMI")
+            st.text_input("Issuing Organization", key="mini_cert_given_by_key", placeholder="e.g., Coursera, AWS, PMI", value=st.session_state.get("mini_cert_given_by_key", ""))
             
         col_d, _ = st.columns(2)
         with col_d:
-            st.text_input("Issue Date (YYYY-MM-DD or Year)", key="mini_cert_issue_date_key", placeholder="e.g., 2024-05-15 or 2023")
+            st.text_input("Issue Date (YYYY-MM-DD or Year)", key="mini_cert_issue_date_key", placeholder="e.g., 2024-05-15 or 2023", value=st.session_state.get("mini_cert_issue_date_key", str(date.today().year)))
             
         st.form_submit_button("➕ Add This Certificate", on_click=add_certification_entry, use_container_width=True, type="secondary")
 
@@ -818,8 +760,47 @@ def cv_management_tab_content():
                 st.button("❌ Remove", key=f"remove_cert_{i}", on_click=remove_certification_entry, args=(i,), type="secondary") 
     else:
         st.info("No certifications added yet.")
+    
+    # --- 6. PROJECTS (Must update state on change) ---
+    st.markdown("---")
+    st.subheader("6. Projects (One Item per Line)")
+    projects_text = "\n".join(st.session_state.cv_form_data.get('projects', []) if all(isinstance(p, str) for p in st.session_state.cv_form_data.get('projects', [])) else [])
+    new_projects_text = st.text_area(
+        "Projects (Name, Description, Technologies)", 
+        value=projects_text,
+        height=100,
+        key="cv_projects_input_form"
+    )
+    # Immediate synchronization of list-based inputs
+    st.session_state.cv_form_data['projects'] = [p.strip() for p in new_projects_text.split('\n') if p.strip()]
 
+    # --- 7. STRENGTHS (Must update state on change) ---
+    st.markdown("---")
+    st.subheader("7. Strengths (One Item per Line)")
+    strength_text = "\n".join(st.session_state.cv_form_data.get('strength', []) if all(isinstance(s, str) for s in st.session_state.cv_form_data.get('strength', [])) else [])
+    new_strength_text = st.text_area(
+        "Key Personal Qualities", 
+        value=strength_text,
+        height=70,
+        key="cv_strength_input_form"
+    )
+    # Immediate synchronization of list-based inputs
+    st.session_state.cv_form_data['strength'] = [s.strip() for s in new_strength_text.split('\n') if s.strip()]
 
+    # ==============================================================
+    # --- 8. GENERATE/LOAD BUTTON (Placed outside the form) ---
+    # ==============================================================
+    st.markdown("---")
+    st.subheader("8. Generate or Load ALL CV Data")
+    st.warning("Ensure you have added all Education, Certifications, and Experience entries using their respective **Add** buttons before clicking this final button!")
+
+    if st.button("Generate and Load ALL CV Data", type="primary", use_container_width=True):
+        if not st.session_state.cv_form_data.get('name') or not st.session_state.cv_form_data.get('email'):
+            st.error("Please fill in at least your **Full Name** and **Email Address**.")
+            return
+        load_and_generate_cv_data()
+        
+    
     # --- CV Preview and Download ---
     st.markdown("---")
     st.subheader("9. Loaded CV Data Preview and Download")
@@ -1228,7 +1209,7 @@ def candidate_dashboard():
                             st.success(f"✅ Successfully loaded and parsed **{result['name']}**.")
                             st.info("View, edit, and download the parsed data in the **CV Management** tab.") 
                         else:
-                            st.error(f"Parsing failed: {result['error']}")
+                            st.error(f"Parsing failed: {e}")
                             st.session_state.parsed = {"error": result['error'], "name": result['name']}
                             st.session_state.full_text = result['full_text'] or ""
             else:
