@@ -769,7 +769,7 @@ def resume_parsing_tab():
     )
     
     st.markdown("---")
-
+    
     process_button = st.button("✨ Parse and Load Uploaded File", type="primary", use_container_width=True)
 
     if process_button:
@@ -1461,61 +1461,17 @@ def batch_jd_match_tab():
         for i, res in enumerate(match_results):
             res['Rank'] = i + 1
 
-        st.success("✅ Batch Matching Complete!")
+        st.success("✅ Batch Matching Complete! (See detailed reports below, ranked by Fit Score.)")
         
-        # REMOVED: st.markdown("### Match Results for Your Resume")
-        
-        # --- Display the Ranked Table ---
-        display_df = [{
-            "Rank": res["Rank"],
-            "Job Description (Ranked)": res["Job Description (Ranked)"],
-            "Role": res["Role"],
-            "Job Type": res["Job Type"],
-            "Fit Score (out of 10)": res["Fit Score (out of 10)"],
-            "Skills (%)": res["Skills (%)"],
-            "Experience (%)": res["Experience (%)"],
-            "Education (%)": res["Education (%)"]
-        } for res in match_results]
-        
-        st.dataframe(
-            display_df, 
-            use_container_width=True, 
-            hide_index=True,
-            # Set columns widths and formatting for better visualization
-            column_config={
-                "Rank": st.column_config.NumberColumn("Rank", width="small"),
-                "Fit Score (out of 10)": st.column_config.ProgressColumn(
-                    "Fit Score (out of 10)",
-                    help="Overall score on a 0-10 scale.",
-                    format="%.1f",
-                    min_value=0,
-                    max_value=10,
-                ),
-                "Skills (%)": st.column_config.ProgressColumn(
-                    "Skills (%)",
-                    format="%d%%",
-                    min_value=0,
-                    max_value=100,
-                ),
-                "Experience (%)": st.column_config.ProgressColumn(
-                    "Experience (%)",
-                    format="%d%%",
-                    min_value=0,
-                    max_value=100,
-                ),
-                 "Education (%)": st.column_config.ProgressColumn(
-                    "Education (%)",
-                    format="%d%%",
-                    min_value=0,
-                    max_value=100,
-                ),
-            }
-        )
+        # --- REMOVED THE DATAFRAME FOR Match Results for Your Resume ---
+        # st.markdown("### Match Results for Your Resume")
+        # ... [removed st.dataframe code here] ...
+        # --- END REMOVAL ---
         
         st.markdown("---")
         
         # --- Detailed Reports ---
-        st.markdown("### Detailed Reports")
+        st.markdown("### Detailed Reports (Ranked)")
         
         for res in match_results:
             report_title = f"Rank {res['Rank']} | Report for {res['Job Description (Ranked)']} (Score: {res['Fit Score (out of 10)']}/10 | S: {res['Skills (%)']}% | E: {res['Experience (%)']}% | Edu: {res['Education (%)']}%)"
@@ -1523,6 +1479,18 @@ def batch_jd_match_tab():
             with st.expander(report_title):
                 st.markdown(f"#### **Summary of Match**")
                 st.markdown(f"> {res['Summary']}")
+                
+                # Display individual component scores as progress bars inside the expander
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Skills Match", f"{res['Skills (%)']}%")
+                    st.progress(res['Skills (%)'] / 100)
+                with col2:
+                    st.metric("Experience Match", f"{res['Experience (%)']}%")
+                    st.progress(res['Experience (%)'] / 100)
+                with col3:
+                    st.metric("Education Match", f"{res['Education (%)']}%")
+                    st.progress(res['Education (%)'] / 100)
                 
                 st.markdown(f"#### **Job Description Details ({res['Role']})**")
                 
