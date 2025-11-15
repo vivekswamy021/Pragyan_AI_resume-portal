@@ -14,158 +14,12 @@ from streamlit.runtime.uploaded_file_manager import UploadedFile
 from datetime import datetime
 import random 
 
-# --- PDF Generation Mock (DEPRECATED: Now generating HTML) ---
-def generate_pdf_mock(cv_data, cv_name):
-    """Mocks the generation of a PDF file and returns its path/bytes."""
-    
-    warning_message = f"🚨 PDF generation is disabled! Use the 'Download CV as HTML (Print-to-PDF)' button instead. The actual library (fpdf) is not installed."
-    
-    return warning_message.encode('utf-8') 
-
-# --- NEW HTML Generation for Print-to-PDF ---
-def format_cv_to_html(cv_data, cv_name):
-    """Formats the structured CV data into a clean HTML string for printing."""
-    
-    # Function to safely create HTML lists
-    def list_to_html(items, tag='li'):
-        if not items:
-            return ""
-        # Ensures items are strings before joining
-        string_items = [str(item) for item in items]
-        return f"<ul>{''.join(f'<{tag}>{item}</{tag}>' for item in string_items)}</ul>"
-
-    # Function to format experience/education sections
-    def format_section(title, items, format_func):
-        html = f'<h2>{title}</h2>'
-        if not items:
-            return html + '<p>No entries found.</p>'
-        
-        for item in items:
-            # ⭐ Defensive Check: Ensure item is a dictionary
-            if isinstance(item, dict):
-                html += format_func(item)
-            else:
-                html += f'<div class="entry"><p><strong>Error:</strong> Corrupted entry: <code>{str(item)}</code></p></div>'
-        return html
-
-    # Specific formatters
-    def format_experience(exp):
-        return f"""
-        <div class="entry">
-            <h3>{exp.get('role', 'N/A')}</h3>
-            <p><strong>Company:</strong> {exp.get('company', 'N/A')}</p>
-            <p><strong>Dates:</strong> {exp.get('dates', 'N/A')}</p>
-            <p><strong>Focus:</strong> {exp.get('project', 'General Duties')}</p>
-        </div>
-        """
-    
-    def format_education(edu):
-        return f"""
-        <div class="entry">
-            <h3>{edu.get('degree', 'N/A')}</h3>
-            <p><strong>Institution:</strong> {edu.get('college', 'N/A')} ({edu.get('university', 'N/A')})</p>
-            <p><strong>Dates:</strong> {edu.get('dates', 'N/A')}</p>
-        </div>
-        """
-
-    def format_certifications(cert):
-        return f"""
-        <div class="entry">
-            <p><strong>{cert.get('name', 'N/A')}</strong> - {cert.get('title', 'N/A')}</p>
-            <p><em>Issued by:</em> {cert.get('given_by', 'N/A')}</p>
-            <p><em>Date:</em> {cert.get('date_received', 'N/A')}</p>
-        </div>
-        """
-
-    def format_projects(proj):
-        tech_str = ', '.join([str(t) for t in proj.get('technologies', [])])
-        link = f' | <a href="{proj["app_link"]}">{proj["app_link"]}</a>' if proj.get("app_link") and proj.get("app_link") != "N/A" else ""
-        return f"""
-        <div class="entry">
-            <h3>{proj.get('name', 'N/A')}</h3>
-            <p><strong>Description:</strong> {proj.get('description', 'N/A')}</p>
-            <p><strong>Technologies:</strong> {tech_str} {link}</p>
-        </div>
-        """
-        
-    # --- Main HTML Structure ---
-    html_content = f"""
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <title>CV: {cv_data.get('name', cv_name)}</title>
-        <style>
-            body {{ font-family: Arial, sans-serif; line-height: 1.6; margin: 20px; }}
-            h1, h2, h3 {{ color: #333; }}
-            h1 {{ border-bottom: 2px solid #555; padding-bottom: 5px; }}
-            h2 {{ border-bottom: 1px solid #ccc; padding-bottom: 2px; margin-top: 20px; }}
-            .header, .contact, .section {{ margin-bottom: 15px; }}
-            .contact p {{ margin: 0; }}
-            .entry {{ margin-bottom: 10px; padding-left: 10px; border-left: 3px solid #eee; }}
-            .summary {{ font-style: italic; background-color: #f9f9f9; padding: 10px; border-radius: 5px; }}
-            ul {{ list-style-type: disc; margin-left: 20px; padding-left: 0; }}
-            /* Print-specific styles */
-            @media print {{
-                body {{ margin: 0; padding: 0; }}
-                h1 {{ border-bottom: 2px solid black; }}
-                h2 {{ border-bottom: 1px solid black; }}
-            }}
-        </style>
-    </head>
-    <body>
-        <div class="header">
-            <h1>{cv_data.get('name', cv_name)}</h1>
-        </div>
-        
-        <div class="contact">
-            <p><strong>Email:</strong> {cv_data.get('email', 'N/A')}</p>
-            <p><strong>Phone:</strong> {cv_data.get('phone', 'N/A')}</p>
-            <p><strong>LinkedIn:</strong> <a href="{cv_data.get('linkedin', '#')}">{cv_data.get('linkedin', 'N/A')}</a></p>
-            <p><strong>GitHub:</strong> <a href="{cv_data.get('github', '#')}">{cv_data.get('github', 'N/A')}</a></p>
-        </div>
-
-        <div class="section summary">
-            <h2>Summary</h2>
-            <p>{cv_data.get('summary', 'N/A')}</p>
-        </div>
-
-        <div class="section">
-            <h2>Skills</h2>
-            {list_to_html(cv_data.get('skills', []))}
-        </div>
-
-        <div class="section">
-            {format_section('Experience', cv_data.get('experience', []), format_experience)}
-        </div>
-
-        <div class="section">
-            {format_section('Education', cv_data.get('education', []), format_education)}
-        </div>
-
-        <div class="section">
-            {format_section('Certifications', cv_data.get('certifications', []), format_certifications)}
-        </div>
-
-        <div class="section">
-            {format_section('Projects', cv_data.get('projects', []), format_projects)}
-        </div>
-        
-        <div class="section">
-            <h2>Strengths</h2>
-            {list_to_html(cv_data.get('strength', []))}
-        </div>
-
-    </body>
-    </html>
-    """
-    return html_content.strip()
-
 # -------------------------
 # CONFIGURATION & API SETUP 
 # -------------------------
 
 GROQ_MODEL = "llama-3.1-8b-instant"
+# Load environment variables (ensure .env file is present with GROQ_API_KEY)
 load_dotenv()
 GROQ_API_KEY = os.getenv('GROQ_API_KEY')
 
@@ -294,7 +148,7 @@ def parse_jd_with_llm(text, jd_title="Job Description"):
     - **title**: The primary job title.
     - **required_skills**: A list of essential technical and soft skills.
     - **responsibilities**: A list of key duties/responsibilities.
-    - **qualifications**: A list of required educational background or certifications.
+    - **qualifications**: A list of required educational background or certifications (e.g., 'B.Tech in CS', 'PMP certification').
     - **experience_level**: The required seniority (e.g., 'Senior', 'Mid-level', 'Entry').
     
     JD Text (Title: {jd_title}): {text}
@@ -324,59 +178,260 @@ def parse_jd_with_llm(text, jd_title="Job Description"):
 
     return parsed
 
-# --- Core Matching Logic (MOCK) ---
+# --- CORE MATCHING LOGIC (ENHANCED MOCK) ---
 def mock_jd_match(cv_data, jd_data):
     """
-    Mocks the complex comparison of a CV (cv_data) against a structured JD (jd_data) 
-    and returns a match score and detailed component scores.
+    Compares CV data against JD data using a detailed, weighted mock calculation
+    to derive Skills, Experience, and Education match percentages.
     """
     
-    jd_skills = jd_data.get('required_skills', [])
-    cv_skills = cv_data.get('skills', [])
+    # 1. Prepare Data
+    jd_skills = {s.lower() for s in jd_data.get('required_skills', []) if isinstance(s, str)}
+    cv_skills = {s.lower() for s in cv_data.get('skills', []) if isinstance(s, str)}
     
-    # Calculate skill overlap (as a simple metric)
-    overlap = len(set(jd_skills) & set(cv_skills))
-    max_skills = len(jd_skills) if jd_skills else 1
+    jd_qualifications = {q.lower() for q in jd_data.get('qualifications', []) if isinstance(q, str)}
+    cv_education = {e.get('degree', '').lower() for e in cv_data.get('education', []) if isinstance(e, dict)}
+    cv_certifications = {c.get('name', '').lower() for c in cv_data.get('certifications', []) if isinstance(c, dict)}
     
-    base_score = (overlap / max_skills) * 80 if max_skills > 0 else 50
+    cv_experience_roles = {e.get('role', '').lower() for e in cv_data.get('experience', []) if isinstance(e, dict)}
+    jd_title_lower = jd_data.get('title', '').lower()
     
-    # Add a random modifier to simulate other factors (experience, projects, education)
-    random_modifier = random.randint(-15, 15)
-    final_score = max(0, min(100, int(base_score + random_modifier)))
+    # --- 2. Skills Match Calculation ---
     
-    # --- Detailed Component Scores (Mocked based on Final Score) ---
-    # Skills %: Weighted heavily by the base score
-    skills_percent = int(base_score + random.randint(-5, 5))
+    if not jd_skills:
+        skills_percent = 75 # Assume decent match if JD has no skill requirements
+    else:
+        # Check for intersection of skills
+        common_skills = jd_skills.intersection(cv_skills)
+        overlap_ratio = len(common_skills) / len(jd_skills)
+        skills_percent = int(overlap_ratio * 100)
+    
     skills_percent = max(0, min(100, skills_percent))
+
+
+    # --- 3. Education/Qualification Match Calculation ---
     
-    # Education %: More random, depends on if they have *any* education listed
-    if cv_data.get('education'):
-        education_percent = random.choice([20, 40, 60, 80])
+    if not jd_qualifications:
+        education_percent = 70 # Assume a good match if no strict qualifications are listed
     else:
-        education_percent = 0
+        required_count = len(jd_qualifications)
+        match_count = 0
         
-    # Experience %: Calculated based on the remaining "score space"
-    # Note: Experience is often the hardest match, so this is often low in simple matching
-    remaining_score = final_score - (skills_percent * 0.5 + education_percent * 0.2)
-    experience_percent = int(remaining_score * 2) # Arbitrarily scale up remaining score
-    experience_percent = max(0, min(100, experience_percent))
+        # Check CV education degrees against JD qualifications
+        for jd_qual in jd_qualifications:
+            # Simple check for major degree types (e.g., 'b.tech' or 'bachelor')
+            if any(jd_qual in edu for edu in cv_education):
+                 match_count += 1
+            # Check CV certifications against JD qualifications
+            elif any(jd_qual in cert for cert in cv_certifications):
+                 match_count += 1
+
+        education_percent = int((match_count / required_count) * 100)
+        
+    education_percent = max(0, min(100, education_percent))
+
+
+    # --- 4. Experience Match Calculation ---
     
-    # Simple summary (can be improved by LLM later)
-    summary = f"Match based on {overlap} required skills found. "
-    if final_score > 90:
-        summary += "Excellent match! Candidate highly qualified."
-    elif final_score > 70:
-        summary += "Strong match. Minor gaps in qualifications/experience noted."
+    # Simple check for role relevance and years (mocked for simplicity)
+    experience_level_jd = jd_data.get('experience_level', 'mid-level').lower()
+    cv_has_relevant_role = any(jd_title_lower in role or role in jd_title_lower for role in cv_experience_roles)
+    
+    # Mock Years of Experience from CV (count of experience entries)
+    cv_years_mock = len(cv_data.get('experience', []))
+    
+    exp_score = 0
+    if cv_has_relevant_role:
+        exp_score += 40 # Bonus for previous similar role/title
+        
+    if experience_level_jd == 'senior' and cv_years_mock >= 5:
+        exp_score += 40
+    elif experience_level_jd == 'mid-level' and cv_years_mock >= 2:
+        exp_score += 40
+    elif experience_level_jd == 'entry' and cv_years_mock >= 0:
+         exp_score += 40
+    
+    # Add a buffer based on total experience entries
+    exp_score += min(20, cv_years_mock * 5)
+
+    experience_percent = max(0, min(100, exp_score))
+    
+    # --- 5. Final Fit Score (Weighted Average) ---
+    
+    # Weighting: Skills (50%), Experience (35%), Education (15%)
+    weighted_score = (skills_percent * 0.50) + (experience_percent * 0.35) + (education_percent * 0.15)
+    
+    final_score_100 = int(weighted_score)
+    final_score_10 = round(final_score_100 / 10, 1)
+
+    # --- 6. Summary Generation ---
+    summary = f"Match based on **{len(common_skills)}/{len(jd_skills)}** required skills found. "
+    
+    if final_score_100 > 90:
+        summary += "Excellent match! Candidate is highly qualified and experienced."
+    elif final_score_100 > 70:
+        summary += "Strong match. Minor gaps in qualifications/experience noted but core skills align."
+    elif final_score_100 > 50:
+        summary += "Fair match. Several core requirements are met, but skill/experience gaps exist."
     else:
-        summary += "Fair match. Significant gaps in core requirements observed."
+        summary += "Low match. Significant gaps in core requirements observed."
         
     return {
-        "score": final_score, 
+        "score_100": final_score_100,
+        "score_10": final_score_10,
         "summary": summary,
         "skills_percent": skills_percent,
         "experience_percent": experience_percent,
         "education_percent": education_percent
     }
+
+
+# --- PDF Generation Mock (DEPRECATED: Now generating HTML) ---
+def generate_pdf_mock(cv_data, cv_name):
+    """Mocks the generation of a PDF file and returns its path/bytes."""
+    
+    warning_message = f"🚨 PDF generation is disabled! Use the 'Download CV as HTML (Print-to-PDF)' button instead. The actual library (fpdf) is not installed."
+    
+    return warning_message.encode('utf-8') 
+
+# --- NEW HTML Generation for Print-to-PDF ---
+def format_cv_to_html(cv_data, cv_name):
+    """Formats the structured CV data into a clean HTML string for printing."""
+    
+    # Function to safely create HTML lists
+    def list_to_html(items, tag='li'):
+        if not items:
+            return ""
+        # Ensures items are strings before joining
+        string_items = [str(item) for item in items]
+        return f"<ul>{''.join(f'<{tag}>{item}</{tag}>') for item in string_items}</ul>"
+
+    # Function to format experience/education sections
+    def format_section(title, items, format_func):
+        html = f'<h2>{title}</h2>'
+        if not items:
+            return html + '<p>No entries found.</p>'
+        
+        for item in items:
+            # ⭐ Defensive Check: Ensure item is a dictionary
+            if isinstance(item, dict):
+                html += format_func(item)
+            else:
+                html += f'<div class="entry"><p><strong>Error:</strong> Corrupted entry: <code>{str(item)}</code></p></div>'
+        return html
+
+    # Specific formatters
+    def format_experience(exp):
+        return f"""
+        <div class="entry">
+            <h3>{exp.get('role', 'N/A')}</h3>
+            <p><strong>Company:</strong> {exp.get('company', 'N/A')}</p>
+            <p><strong>Dates:</strong> {exp.get('dates', 'N/A')}</p>
+            <p><strong>Focus:</strong> {exp.get('project', 'General Duties')}</p>
+        </div>
+        """
+    
+    def format_education(edu):
+        return f"""
+        <div class="entry">
+            <h3>{edu.get('degree', 'N/A')}</h3>
+            <p><strong>Institution:</strong> {edu.get('college', 'N/A')} ({edu.get('university', 'N/A')})</p>
+            <p><strong>Dates:</strong> {edu.get('dates', 'N/A')}</p>
+        </div>
+        """
+
+    def format_certifications(cert):
+        return f"""
+        <div class="entry">
+            <p><strong>{cert.get('name', 'N/A')}</strong> - {cert.get('title', 'N/A')}</p>
+            <p><em>Issued by:</em> {cert.get('given_by', 'N/A')}</p>
+            <p><em>Date:</em> {cert.get('date_received', 'N/A')}</p>
+        </div>
+        """
+
+    def format_projects(proj):
+        tech_str = ', '.join([str(t) for t in proj.get('technologies', [])])
+        link = f' | <a href="{proj["app_link"]}">{proj["app_link"]}</a>' if proj.get("app_link") and proj.get("app_link") != "N/A" else ""
+        return f"""
+        <div class="entry">
+            <h3>{proj.get('name', 'N/A')}</h3>
+            <p><strong>Description:</strong> {proj.get('description', 'N/A')}</p>
+            <p><strong>Technologies:</strong> {tech_str} {link}</p>
+        </div>
+        """
+        
+    # --- Main HTML Structure ---
+    html_content = f"""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>CV: {cv_data.get('name', cv_name)}</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; margin: 20px; }}
+            h1, h2, h3 {{ color: #333; }}
+            h1 {{ border-bottom: 2px solid #555; padding-bottom: 5px; }}
+            h2 {{ border-bottom: 1px solid #ccc; padding-bottom: 2px; margin-top: 20px; }}
+            .header, .contact, .section {{ margin-bottom: 15px; }}
+            .contact p {{ margin: 0; }}
+            .entry {{ margin-bottom: 10px; padding-left: 10px; border-left: 3px solid #eee; }}
+            .summary {{ font-style: italic; background-color: #f9f9f9; padding: 10px; border-radius: 5px; }}
+            ul {{ list-style-type: disc; margin-left: 20px; padding-left: 0; }}
+            /* Print-specific styles */
+            @media print {{
+                body {{ margin: 0; padding: 0; }}
+                h1 {{ border-bottom: 2px solid black; }}
+                h2 {{ border-bottom: 1px solid black; }}
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h1>{cv_data.get('name', cv_name)}</h1>
+        </div>
+        
+        <div class="contact">
+            <p><strong>Email:</strong> {cv_data.get('email', 'N/A')}</p>
+            <p><strong>Phone:</strong> {cv_data.get('phone', 'N/A')}</p>
+            <p><strong>LinkedIn:</strong> <a href="{cv_data.get('linkedin', '#')}">{cv_data.get('linkedin', 'N/A')}</a></p>
+            <p><strong>GitHub:</strong> <a href="{cv_data.get('github', '#')}">{cv_data.get('github', 'N/A')}</a></p>
+        </div>
+
+        <div class="section summary">
+            <h2>Summary</h2>
+            <p>{cv_data.get('summary', 'N/A')}</p>
+        </div>
+
+        <div class="section">
+            <h2>Skills</h2>
+            {list_to_html(cv_data.get('skills', []))}
+        </div>
+
+        <div class="section">
+            {format_section('Experience', cv_data.get('experience', []), format_experience)}
+        </div>
+
+        <div class="section">
+            {format_section('Education', cv_data.get('education', []), format_education)}
+        </div>
+
+        <div class="section">
+            {format_section('Certifications', cv_data.get('certifications', []), format_certifications)}
+        </div>
+
+        <div class="section">
+            {format_section('Projects', cv_data.get('projects', []), format_projects)}
+        </div>
+        
+        <div class="section">
+            <h2>Strengths</h2>
+            {list_to_html(cv_data.get('strength', []))}
+        </div>
+
+    </body>
+    </html>
+    """
+    return html_content.strip()
 
 # --- Shared Manual Input Logic (CV Form) ---
 def save_form_cv():
@@ -501,7 +556,7 @@ def remove_entry(index, state_key, entry_type='Item'):
         st.toast(f"Removed {entry_type}: {removed_name}")
 
 def format_cv_to_markdown(cv_data, cv_name):
-    """Formats the structured CV data into a viewable Markdown string."""
+    """Formats the structured CV data into a viewable Markdown string. (Includes AttributeError Fix)"""
     md = f"""
 # {cv_data.get('name', cv_name)}
 ### Contact & Links
@@ -1356,7 +1411,7 @@ def batch_jd_match_tab():
             title_display = jd_data.get('title', jd_key)
             jd_role = title_display # Use the title as the role for simplicity
             
-            # Create a simplified file name for display purposes, mimicking the user's image
+            # Create a simplified file name for display purposes
             jd_file_name = jd_key.replace('_', '-').replace("Pasted-JD-", "").replace("-", "_") + ".pdf"
 
             match_results.append({
@@ -1364,13 +1419,13 @@ def batch_jd_match_tab():
                 "Job Description (Ranked)": jd_file_name,
                 "Role": jd_role,
                 "Job Type": "Full-time", # Mocked value
-                "Fit Score (out of 10)": round(match_data['score'] / 10, 1), # Convert 0-100 to 0-10
+                "Fit Score (out of 10)": match_data['score_10'], 
                 "Skills (%)": match_data['skills_percent'],
                 "Experience (%)": match_data['experience_percent'],
                 "Education (%)": match_data['education_percent'],
                 "Summary": match_data['summary'],
                 "JD Key": jd_key,
-                "Sortable Score": match_data['score']
+                "Sortable Score": match_data['score_100'] # Use the 0-100 score for sorting
             })
             
         if not match_results:
@@ -1386,7 +1441,7 @@ def batch_jd_match_tab():
         
         st.markdown("### Match Results for Your Resume")
         
-        # --- Display the Ranked Table (Mimics User's Image) ---
+        # --- Display the Ranked Table ---
         display_df = [{
             "Rank": res["Rank"],
             "Job Description (Ranked)": res["Job Description (Ranked)"],
@@ -1407,7 +1462,7 @@ def batch_jd_match_tab():
                 "Rank": st.column_config.NumberColumn("Rank", width="small"),
                 "Fit Score (out of 10)": st.column_config.ProgressColumn(
                     "Fit Score (out of 10)",
-                    help="Overall score converted to a 0-10 scale.",
+                    help="Overall score on a 0-10 scale.",
                     format="%.1f",
                     min_value=0,
                     max_value=10,
@@ -1435,11 +1490,10 @@ def batch_jd_match_tab():
         
         st.markdown("---")
         
-        # --- Detailed Reports (Mimics User's Image) ---
+        # --- Detailed Reports ---
         st.markdown("### Detailed Reports")
         
         for res in match_results:
-            # This line was fixed in the previous iteration
             report_title = f"Rank {res['Rank']} | Report for {res['Job Description (Ranked)']} (Score: {res['Fit Score (out of 10)']}/10 | S: {res['Skills (%)']}% | E: {res['Experience (%)']}% | Edu: {res['Education (%)']}%)"
             
             with st.expander(report_title):
