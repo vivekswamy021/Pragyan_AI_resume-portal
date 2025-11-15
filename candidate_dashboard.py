@@ -1360,7 +1360,7 @@ def batch_jd_match_tab():
         st.markdown("### Detailed Reports")
         
         for res in match_results:
-            report_title = f"Rank {res['Rank']} | Report for {res['Job Description (Ranked'])} (Score: {int(res['Fit Score (out of 10)'])}/10 | S: {res['Skills (%)']}% | E: {res['Experience (%)']}% | Edu: {res['Education (%)']}%)"
+            report_title = f"Rank {res['Rank']} | Report for {res['Job Description (Ranked'])} (Score: {int(res['Fit Score (out of 10)'])}/10 | S: {res['Skills (%)']}% | E: {res['Experience (%)']}% | Edu: {res['Education (%)']}%
             
             with st.expander(report_title):
                 st.markdown(f"#### **Summary of Match**")
