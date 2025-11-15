@@ -1463,7 +1463,7 @@ def batch_jd_match_tab():
 
         st.success("✅ Batch Matching Complete!")
         
-        st.markdown("### Match Results for Your Resume")
+        # REMOVED: st.markdown("### Match Results for Your Resume")
         
         # --- Display the Ranked Table ---
         display_df = [{
