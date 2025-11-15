@@ -697,6 +697,7 @@ def resume_parsing_tab():
         st.session_state.current_resume_name = cv_key_name
         
         # Set the parsed data to the manual form fields for potential editing
+        # Crucial for populating the manual form fields immediately after parsing
         st.session_state.form_name_value = parsed_data.get('name', '')
         st.session_state.form_email_value = parsed_data.get('email', '')
         st.session_state.form_phone_value = parsed_data.get('phone', '')
@@ -736,6 +737,7 @@ def cv_form_content():
     
     col_name, col_email = st.columns(2)
     with col_name:
+        # These keys rely on initialization in candidate_dashboard() or parsing
         st.text_input("Full Name", key="form_name_value")
     with col_email:
         st.text_input("Email", key="form_email_value")
@@ -779,9 +781,10 @@ def cv_form_content():
             try:
                 # Attempt to get the latest experience date start
                 if st.session_state.form_experience:
-                    latest_exp_date = st.session_state.form_experience[-1]['dates'].split(' - ')[0]
-                    default_date_from = datetime.strptime(latest_exp_date, "%Y").date()
-            except:
+                    # Safely access date, defaulting to current year if parsing failed
+                    latest_exp_date_str = st.session_state.form_experience[-1].get('dates', '2020 - 2020').split(' - ')[0]
+                    default_date_from = datetime.strptime(latest_exp_date_str, "%Y").date()
+            except Exception:
                  pass
             
             new_exp_date_from = st.date_input("Date From (Start)", value=default_date_from, key="form_new_exp_date_from")
@@ -913,7 +916,7 @@ def cv_form_content():
                 )
     
     # -----------------------------
-    # 6. PROJECTS SECTION 
+    # 6. PROJECTS SECTION
     # -----------------------------
     st.markdown("#### 6. Projects")
     
@@ -980,9 +983,8 @@ def cv_form_content():
 
 
 def tab_cv_management():
-    # Placeholder for the CV form content and display
-    
-    # Initialization for list-based state
+    # Initialization for list-based state (though mostly moved to candidate_dashboard)
+    # Re-initialization here is a safety net
     if "form_education" not in st.session_state: st.session_state.form_education = []
     if "form_experience" not in st.session_state: st.session_state.form_experience = []
     if "form_certifications" not in st.session_state: st.session_state.form_certifications = []
@@ -1034,6 +1036,9 @@ def jd_management_tab():
     st.caption("Upload or paste job descriptions. They will be parsed and saved for matching against your CV.")
     
     st.markdown("#### 1. Select JD Type")
+    # Ensure jd_type_select is initialized
+    if "jd_type_select" not in st.session_state: st.session_state.jd_type_select = "Single JD"
+    
     jd_type = st.radio(
         "Choose JD scope:",
         ["Single JD", "Multiple JD"],
@@ -1045,6 +1050,9 @@ def jd_management_tab():
     st.markdown("---")
     
     st.markdown("#### 2. Add JD by:")
+    
+    # Ensure jd_method_select is initialized
+    if "jd_method_select" not in st.session_state: st.session_state.jd_method_select = "Upload File"
     
     jd_method = st.radio(
         "Choose Method:",
@@ -1144,10 +1152,10 @@ def batch_jd_match_tab():
 
     st.markdown("---")
 
-    # 1. Check for Active CV (FIX: Only check existence in managed_cvs)
+    # 1. Check for Active CV (Corrected check)
     current_cv_name = st.session_state.get('current_resume_name')
     
-    # The crucial fix: check if the resume name is set AND if the corresponding data exists.
+    # Check if the resume name is set AND if the corresponding data exists.
     if not current_cv_name or current_cv_name not in st.session_state.managed_cvs:
         st.warning("⚠️ **No Active CV Detected.** Please parse a resume or save a CV using the 'Resume Parsing' or 'CV Management' tabs before matching.")
         return
@@ -1167,11 +1175,15 @@ def batch_jd_match_tab():
     # Use titles for display, but keys for selection logic
     jd_titles = [st.session_state.managed_jds[key].get('title', key) for key in available_jds]
     
+    # Ensure 'selected_jds_for_match' is initialized before use
+    if "selected_jds_for_match" not in st.session_state:
+        st.session_state.selected_jds_for_match = jd_titles # Default to all JDs
+        
     selected_jd_titles = st.multiselect(
         "Choose the JDs you want to match against (Select at least one):",
         options=jd_titles,
         key="selected_jds_for_match",
-        default=jd_titles
+        default=st.session_state.selected_jds_for_match if st.session_state.selected_jds_for_match else jd_titles
     )
 
     # Map selected titles back to their keys
@@ -1194,12 +1206,18 @@ def batch_jd_match_tab():
             # Run the mock matching function
             score, summary = mock_jd_match(cv_data, jd_data)
             
+            # Extract score as float for sorting
+            try:
+                sortable_score = float(score.strip('%')) 
+            except ValueError:
+                sortable_score = 0.0 # Default to 0 if parsing fails
+            
             match_results.append({
                 "Job Description": jd_data.get('title', jd_key),
                 "Match Score": score,
                 "Summary": summary,
                 "JD Key": jd_key,
-                "Sortable Score": float(score.strip('%')) 
+                "Sortable Score": sortable_score
             })
             
         # Sort results by score descending
@@ -1221,9 +1239,10 @@ def batch_jd_match_tab():
         
         # Optional: Display details of the top match
         st.markdown("---")
-        top_match = match_results[0]
-        st.markdown(f"#### Detail for Top Match: **{top_match['Job Description']}**")
-        st.json(st.session_state.managed_jds[top_match['JD Key']])
+        if match_results:
+            top_match = match_results[0]
+            st.markdown(f"#### Detail for Top Match: **{top_match['Job Description']}**")
+            st.json(st.session_state.managed_jds[top_match['JD Key']])
 
 
 # -------------------------
@@ -1236,7 +1255,19 @@ def candidate_dashboard():
     col_header, col_logout = st.columns([4, 1])
     with col_logout:
         if st.button("🚪 Log Out", use_container_width=True):
-            keys_to_delete = ['candidate_results', 'current_resume', 'manual_education', 'managed_cvs', 'current_resume_name', 'form_education', 'form_experience', 'form_certifications', 'form_projects', 'show_cv_output', 'form_name_value', 'form_email_value', 'form_phone_value', 'form_linkedin_value', 'form_github_value', 'form_summary_value', 'form_skills_value', 'form_strengths_input', 'form_cv_key_name', 'resume_uploader', 'resume_paster', 'jd_type_select', 'jd_method_select', 'jd_uploader', 'jd_paster', 'jd_linkedin_url', 'managed_jds', 'selected_jds_for_match']
+            # Explicitly deleting all relevant state keys for a clean logout
+            keys_to_delete = [
+                'candidate_results', 'current_resume', 'manual_education', 
+                'managed_cvs', 'current_resume_name', 'form_education', 
+                'form_experience', 'form_certifications', 'form_projects', 
+                'show_cv_output', 'form_name_value', 'form_email_value', 
+                'form_phone_value', 'form_linkedin_value', 'form_github_value', 
+                'form_summary_value', 'form_skills_value', 'form_strengths_input', 
+                'form_cv_key_name', 'resume_uploader', 'resume_paster', 
+                'jd_type_select', 'jd_method_select', 'jd_uploader', 
+                'jd_paster', 'jd_linkedin_url', 'managed_jds', 
+                'selected_jds_for_match'
+            ]
             for key in keys_to_delete:
                 if key in st.session_state:
                     del st.session_state[key]
@@ -1247,11 +1278,11 @@ def candidate_dashboard():
 
     # --- Session State Initialization for Candidate ---
     if "managed_cvs" not in st.session_state: st.session_state.managed_cvs = {} 
-    if "managed_jds" not in st.session_state: st.session_state.managed_jds = {} # Initialized for JDs
+    if "managed_jds" not in st.session_state: st.session_state.managed_jds = {} 
     if "current_resume_name" not in st.session_state: st.session_state.current_resume_name = None 
     if "show_cv_output" not in st.session_state: st.session_state.show_cv_output = None 
     
-    # Initialize keys for personal details to ensure stability
+    # Initialize keys for personal details and text areas (Crucial Fix)
     if "form_name_value" not in st.session_state: st.session_state.form_name_value = ""
     if "form_email_value" not in st.session_state: st.session_state.form_email_value = ""
     if "form_phone_value" not in st.session_state: st.session_state.form_phone_value = ""
@@ -1260,6 +1291,13 @@ def candidate_dashboard():
     if "form_summary_value" not in st.session_state: st.session_state.form_summary_value = ""
     if "form_skills_value" not in st.session_state: st.session_state.form_skills_value = ""
     if "form_strengths_input" not in st.session_state: st.session_state.form_strengths_input = ""
+    
+    # Initialize list keys for structured data (Crucial Fix)
+    if "form_education" not in st.session_state: st.session_state.form_education = []
+    if "form_experience" not in st.session_state: st.session_state.form_experience = []
+    if "form_certifications" not in st.session_state: st.session_state.form_certifications = []
+    if "form_projects" not in st.session_state: st.session_state.form_projects = []
+
 
     # --- Main Content with New Tabs ---
     tab_parsing, tab_management, tab_jd, tab_match = st.tabs(["📄 Resume Parsing", "📝 CV Management (Form)", "💼 JD Management", "🏆 Batch JD Match"])
