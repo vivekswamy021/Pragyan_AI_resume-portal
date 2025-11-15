@@ -183,9 +183,12 @@ def mock_jd_match(cv_data, jd_data):
     """
     Compares CV data against JD data using a detailed, weighted mock calculation
     to derive Skills, Experience, and Education match percentages.
+    
+    FIX: Added defensive checks against missing/empty lists and division by zero.
     """
     
     # 1. Prepare Data
+    # Ensure all data components are list/set before processing
     jd_skills = {s.lower() for s in jd_data.get('required_skills', []) if isinstance(s, str)}
     cv_skills = {s.lower() for s in cv_data.get('skills', []) if isinstance(s, str)}
     
@@ -199,12 +202,17 @@ def mock_jd_match(cv_data, jd_data):
     # --- 2. Skills Match Calculation ---
     
     if not jd_skills:
-        skills_percent = 75 # Assume decent match if JD has no skill requirements
+        # FIX: If no skills are required, assume a decent match
+        skills_percent = 75 
     else:
         # Check for intersection of skills
         common_skills = jd_skills.intersection(cv_skills)
-        overlap_ratio = len(common_skills) / len(jd_skills)
-        skills_percent = int(overlap_ratio * 100)
+        # FIX: Check for division by zero
+        if len(jd_skills) > 0:
+            overlap_ratio = len(common_skills) / len(jd_skills)
+            skills_percent = int(overlap_ratio * 100)
+        else:
+            skills_percent = 0 # Should be caught by the outer `if not jd_skills`
     
     skills_percent = max(0, min(100, skills_percent))
 
@@ -212,7 +220,8 @@ def mock_jd_match(cv_data, jd_data):
     # --- 3. Education/Qualification Match Calculation ---
     
     if not jd_qualifications:
-        education_percent = 70 # Assume a good match if no strict qualifications are listed
+        # FIX: If no qualifications are required, assume a good match
+        education_percent = 70 
     else:
         required_count = len(jd_qualifications)
         match_count = 0
@@ -226,7 +235,11 @@ def mock_jd_match(cv_data, jd_data):
             elif any(jd_qual in cert for cert in cv_certifications):
                  match_count += 1
 
-        education_percent = int((match_count / required_count) * 100)
+        # FIX: Check for division by zero
+        if required_count > 0:
+            education_percent = int((match_count / required_count) * 100)
+        else:
+             education_percent = 0 # Should be caught by the outer `if not jd_qualifications`
         
     education_percent = max(0, min(100, education_percent))
 
@@ -241,9 +254,15 @@ def mock_jd_match(cv_data, jd_data):
     cv_years_mock = len(cv_data.get('experience', []))
     
     exp_score = 0
+    
+    # Give a small base score if there is any experience at all
+    if cv_years_mock > 0:
+         exp_score += 10
+         
     if cv_has_relevant_role:
         exp_score += 40 # Bonus for previous similar role/title
         
+    # Check seniority alignment
     if experience_level_jd == 'senior' and cv_years_mock >= 5:
         exp_score += 40
     elif experience_level_jd == 'mid-level' and cv_years_mock >= 2:
@@ -252,20 +271,21 @@ def mock_jd_match(cv_data, jd_data):
          exp_score += 40
     
     # Add a buffer based on total experience entries
-    exp_score += min(20, cv_years_mock * 5)
+    exp_score += min(10, cv_years_mock * 2) # Reduced weight slightly
 
     experience_percent = max(0, min(100, exp_score))
     
     # --- 5. Final Fit Score (Weighted Average) ---
     
     # Weighting: Skills (50%), Experience (35%), Education (15%)
+    # This calculation should *never* fail if the component percentages are valid numbers (0-100)
     weighted_score = (skills_percent * 0.50) + (experience_percent * 0.35) + (education_percent * 0.15)
     
     final_score_100 = int(weighted_score)
     final_score_10 = round(final_score_100 / 10, 1)
 
     # --- 6. Summary Generation ---
-    summary = f"Match based on **{len(common_skills)}/{len(jd_skills)}** required skills found. "
+    summary = f"Match based on **{len(common_skills)}/{len(jd_skills) if len(jd_skills) > 0 else 0}** required skills found. "
     
     if final_score_100 > 90:
         summary += "Excellent match! Candidate is highly qualified and experienced."
