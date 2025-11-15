@@ -1630,7 +1630,227 @@ def batch_jd_match_tab():
         st.info("Run the Match Analysis above to generate the report.")
 
 # -------------------------
-# NEW: FILTER JD TAB CONTENT (UPDATED)
+# NEW: COVER LETTER GENERATION TAB CONTENT
+# -------------------------
+
+@st.cache_data(show_spinner="✍️ Generating personalized cover letter with Groq LLM...")
+def generate_cover_letter_llm(cv_data, jd_data, recipient_info):
+    """
+    Generates a cover letter based on CV and JD.
+    
+    cv_data (dict): Structured CV data.
+    jd_data (dict): Structured JD data.
+    recipient_info (dict): Contains Recipient Name and Company Name.
+    """
+    if not GROQ_API_KEY:
+        return "Error: GROQ_API_KEY not set. AI functions disabled."
+
+    # Format CV key sections for the prompt
+    cv_summary = cv_data.get('summary', 'A highly motivated individual.')
+    cv_skills = ', '.join([str(s) for s in cv_data.get('skills', [])[:10]]) # Top 10 skills
+    cv_experience = '\n'.join([
+        f"- {exp.get('role', 'N/A')} at {exp.get('company', 'N/A')}"
+        for exp in cv_data.get('experience', [])[:3]
+    ]) # Top 3 jobs
+
+    # Format JD key sections for the prompt
+    jd_title = jd_data.get('title', 'Unknown Role')
+    jd_skills = ', '.join([str(s) for s in jd_data.get('required_skills', [])[:5]]) # Top 5 required skills
+    jd_qualifications = ', '.join([str(q) for q in jd_data.get('qualifications', [])[:3]]) # Top 3 qualifications
+
+    prompt = f"""
+    You are an expert career consultant. Write a professional and compelling cover letter for a job application.
+    The letter must be highly personalized, directly matching the candidate's experience to the job requirements.
+
+    **Candidate Information (to be used for matching and contact details):**
+    - Name: {cv_data.get('name', 'N/A')}
+    - Email: {cv_data.get('email', 'N/A')}
+    - Phone: {cv_data.get('phone', 'N/A')}
+    - Summary: {cv_summary}
+    - Key Skills: {cv_skills}
+    - Recent Experience: {cv_experience}
+    
+    **Job Description Information:**
+    - Role: {jd_title}
+    - Required Skills: {jd_skills}
+    - Key Qualifications: {jd_qualifications}
+    - Company Name: {recipient_info.get('company_name', 'Hiring Team')}
+    
+    **Recipient Information (Use this for salutation):**
+    - Recipient Name: {recipient_info.get('recipient_name', 'Hiring Manager')}
+    
+    **Structure Requirements:**
+    1.  **Date** (Current Date: {date.today().strftime('%B %d, %Y')})
+    2.  **Recipient Address Block** (Use recipient name and company name)
+    3.  **Salutation** (e.g., Dear [Recipient Name] or Dear Hiring Manager)
+    4.  **Opening Paragraph (Hook):** State the role and where you saw it, expressing enthusiasm.
+    5.  **Body Paragraph 1 (Skills Match):** Directly address 2-3 of the JD's required skills and explain how the candidate's **Key Skills** (e.g., {cv_skills}) and **Experience** demonstrate proficiency.
+    6.  **Body Paragraph 2 (Experience/Growth):** Mention a brief career highlight from their **Recent Experience** that shows relevant seniority or achievement.
+    7.  **Closing Paragraph:** Express excitement for the interview and re-iterate the contact details.
+    8.  **Sign-off** (e.g., Sincerely, [Candidate Name])
+    
+    **IMPORTANT:** Format the entire output as a single, clean **plain text** block, with appropriate line breaks for a professional letter layout. Do not use markdown (like `**`, `#`, or `*`) or any JSON/XML wrappers.
+    """
+    
+    try:
+        response = client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7 # Higher temperature for creative text generation
+        )
+        content = response.choices[0].message.content.strip()
+        return content
+    except Exception as e:
+        return f"AI Generation Error: Failed to generate cover letter. Error: {e}"
+
+def format_cl_to_html(cl_text, cv_data, jd_data):
+    """Formats the cover letter text into a clean HTML for printing/download."""
+    
+    cl_text_html = cl_text.replace('\n', '<br>')
+    
+    cv_name = cv_data.get('name', 'Candidate Name')
+    jd_title = jd_data.get('title', 'Job Role')
+    
+    html_content = f"""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>Cover Letter for {jd_title} - {cv_name}</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; margin: 50px; max-width: 800px; margin-left: auto; margin-right: auto; }}
+            /* Print-specific styles */
+            @media print {{
+                body {{ margin: 0; padding: 50px; }}
+            }}
+        </style>
+    </head>
+    <body>
+        <pre style="white-space: pre-wrap; font-family: inherit; line-height: 1.6;">{cl_text_html}</pre>
+    </body>
+    </html>
+    """
+    return html_content.strip()
+
+def cover_letter_tab():
+    st.header("💌 Generate Personalized Cover Letter")
+    st.caption("Generate a cover letter tailored to a specific CV and JD.")
+
+    if not GROQ_API_KEY:
+        st.error("⚠️ GROQ_API_KEY is missing. Cover Letter generation is disabled.")
+        return
+
+    cv_keys_valid = {k: v.get('name', k) for k, v in st.session_state.managed_cvs.items() if isinstance(v, dict)}
+    jd_keys_valid = {k: v.get('title', k) for k, v in st.session_state.managed_jds.items() if isinstance(v, dict)}
+
+    if not cv_keys_valid or not jd_keys_valid:
+        st.warning("Please ensure you have at least **one valid CV** and **one valid JD** saved in their respective tabs to use this feature.")
+        return
+        
+    st.markdown("---")
+    
+    col_cv, col_jd = st.columns(2)
+    with col_cv:
+        selected_cv_key = st.selectbox(
+            "Select Candidate CV",
+            options=list(cv_keys_valid.keys()),
+            format_func=lambda k: cv_keys_valid[k],
+            key="cl_cv_select"
+        )
+    with col_jd:
+        selected_jd_key = st.selectbox(
+            "Select Target Job Description",
+            options=list(jd_keys_valid.keys()),
+            format_func=lambda k: jd_keys_valid[k],
+            key="cl_jd_select"
+        )
+        
+    st.markdown("---")
+    
+    st.markdown("#### Recipient Details (Optional)")
+    col_recip, col_comp = st.columns(2)
+    with col_recip:
+        recipient_name = st.text_input(
+            "Recipient Name (e.g., Jane Doe, Hiring Manager)",
+            value="Hiring Manager",
+            key="cl_recipient_name"
+        )
+    with col_comp:
+        company_name = st.text_input(
+            "Target Company Name",
+            value=jd_keys_valid.get(selected_jd_key, "The Company"),
+            key="cl_company_name"
+        )
+    
+    st.markdown("---")
+    
+    generate_button = st.button(
+        "✨ Generate Personalized Cover Letter",
+        type="primary",
+        use_container_width=True,
+        key="cl_generate_button"
+    )
+    
+    st.markdown("---")
+
+    if generate_button:
+        cv_data = st.session_state.managed_cvs.get(selected_cv_key)
+        jd_data = st.session_state.managed_jds.get(selected_jd_key)
+        
+        recipient_info = {
+            "recipient_name": recipient_name.strip() or "Hiring Manager",
+            "company_name": company_name.strip() or "The Company"
+        }
+
+        if not cv_data or not jd_data or isinstance(cv_data, str) or isinstance(jd_data, str):
+            st.error("Error: Selected CV or JD data is corrupted or missing.")
+            return
+
+        cl_text = generate_cover_letter_llm(cv_data, jd_data, recipient_info)
+        st.session_state.last_cover_letter = cl_text
+        st.session_state.cl_cv_name = cv_data.get('name', 'Candidate')
+        st.session_state.cl_jd_title = jd_data.get('title', 'Role')
+
+        if cl_text.startswith("AI Generation Error"):
+             st.error(cl_text)
+        else:
+             st.success("Cover Letter Generated!")
+
+    if st.session_state.get('last_cover_letter'):
+        cl_text = st.session_state.last_cover_letter
+        cv_name = st.session_state.cl_cv_name
+        jd_title = st.session_state.cl_jd_title
+        
+        st.markdown(f"### Generated Cover Letter for **{jd_title}**")
+        st.markdown("---")
+        
+        st.text(cl_text)
+        
+        st.markdown("---")
+        
+        # Download options
+        html_output = format_cl_to_html(cl_text, st.session_state.managed_cvs.get(selected_cv_key, {}), st.session_state.managed_jds.get(selected_jd_key, {}))
+        
+        col_dl_html, col_dl_txt = st.columns(2)
+        with col_dl_html:
+            st.download_button(
+                label="📥 Download as HTML (Print-to-PDF)",
+                data=html_output.encode('utf-8'),
+                file_name=f"CoverLetter_{cv_name.replace(' ', '_')}_{jd_title.replace(' ', '_')}.html",
+                mime="text/html",
+                key="download_cl_html"
+            )
+        with col_dl_txt:
+            st.download_button(
+                label="📥 Download as Plain Text (.txt)",
+                data=cl_text.encode('utf-8'),
+                file_name=f"CoverLetter_{cv_name.replace(' ', '_')}_{jd_title.replace(' ', '_')}.txt",
+                mime="text/plain",
+                key="download_cl_txt"
+            )
+
+# -------------------------
+# NEW: FILTER JD TAB CONTENT (UPDATED - REMOVED MIN SKILLS)
 # -------------------------
 
 def filter_jd_tab():
@@ -1640,29 +1860,26 @@ def filter_jd_tab():
     # --- Filter Inputs ---
     with st.form("jd_filter_form"):
         st.markdown("#### 1. Filter by Skills")
-        col_skills, col_count = st.columns([0.7, 0.3])
-        with col_skills:
-            filter_skills_input = st.text_input(
-                "Enter key skills (comma-separated)",
-                key="filter_skills_input",
-                placeholder="Python, SQL, AWS, Leadership"
-            )
-        with col_count:
-            filter_min_skills = st.number_input(
-                "Min Matching Skills",
-                min_value=0,
-                max_value=10,
-                value=2,
-                step=1,
-                key="filter_min_skills"
-            )
+        
+        # --- REMOVED: col_skills, col_count = st.columns([0.7, 0.3])
+        # --- REMOVED: st.number_input ("Min Matching Skills")
+        
+        filter_skills_input = st.text_input(
+            "Enter key skills (comma-separated). JDs must contain at least one of these.",
+            key="filter_skills_input",
+            placeholder="Python, SQL, AWS, Leadership"
+        )
+        
+        # Setting filter_min_skills to 1 if skills input is used, or 0 if empty
+        filter_min_skills = 1 if filter_skills_input.strip() else 0
+
 
         st.markdown("---")
         st.markdown("#### 2. Filter by Job Type & Role")
         
         col_job_type, col_role = st.columns(2)
         with col_job_type:
-            # --- UPDATED: Use st.selectbox for single selection with 'All Job Types' ---
+            # --- Use st.selectbox for single selection with 'All Job Types' ---
             JOB_TYPE_OPTIONS = ['All Job Types', 'Full-time', 'Internship', 'Part-time', 'Hybrid', 'Remote', 'Contract/Temp']
             filter_job_type = st.selectbox(
                 "Select Job Type",
@@ -1670,11 +1887,10 @@ def filter_jd_tab():
                 index=0, # Default to 'All Job Types'
                 key="filter_job_type"
             )
-            # --- END UPDATED ---
             
         with col_role:
             filter_role_input = st.text_input(
-                "Enter Role Keyword (e.g., 'Analyst', 'Engineer', 'Manager')",
+                "Enter Role Keyword (e.g., 'Analyst', 'Engineer', 'Manager'). JDs must contain this keyword.",
                 key="filter_role_input",
                 placeholder="Data Scientist"
             )
@@ -1690,16 +1906,15 @@ def filter_jd_tab():
         search_skills = {s.strip().lower() for s in filter_skills_input.split(',') if s.strip()}
         search_roles = {r.strip().lower() for r in filter_role_input.split(',') if r.strip()}
         
-        if not (search_skills or (filter_job_type != 'All Job Types') or search_roles):
+        # Only run filter logic if *any* filter besides 'All Job Types' is active
+        if not search_skills and (filter_job_type == 'All Job Types') and not search_roles:
             st.warning("Please enter or select at least one filter criterion (excluding 'All Job Types') to apply.")
             st.session_state.filtered_jds = []
-            # Reset detail view if no filters applied
             st.session_state.show_jd_details_from_filter = False
             st.session_state.selected_jd_key = None
             st.rerun()
 
         matched_jds = []
-        
         valid_jds = st.session_state.managed_jds
         
         with st.spinner("Applying filters..."):
@@ -1713,18 +1928,18 @@ def filter_jd_tab():
 
                 # --- Skills Filter Logic ---
                 skills_match_count = 0
+                skills_passed = True
                 if search_skills:
                     common_skills = search_skills.intersection(jd_skills_lower)
                     skills_match_count = len(common_skills)
-                    if skills_match_count < filter_min_skills:
-                        continue # Failed skills filter
-                elif filter_skills_input: # If skills input is present but fails min match
-                     if filter_min_skills > 0:
-                        continue
+                    if skills_match_count < filter_min_skills: # filter_min_skills is 1 if input is used, 0 otherwise
+                        skills_passed = False
+                
+                if not skills_passed:
+                    continue
                 
                 # --- Job Type Filter Logic ---
-                job_type_match = False
-                # Determine the JD's job type (Mocked logic, same as in mock_jd_match)
+                # Determine the JD's job type (Mocked logic)
                 jd_type_mock = "Full-time"
                 if 'internship' in jd_raw_text_lower:
                     jd_type_mock = "Internship"
@@ -1737,31 +1952,27 @@ def filter_jd_tab():
                 elif 'contract' in jd_title_lower or 'temp' in jd_title_lower:
                     jd_type_mock = "Contract/Temp"
 
-                if filter_job_type == 'All Job Types' or jd_type_mock == filter_job_type:
-                    job_type_match = True
-                else:
+                if filter_job_type != 'All Job Types' and jd_type_mock != filter_job_type:
                     continue # Failed job type filter
 
                 # --- Role Filter Logic (Search in Title) ---
-                role_match = False
+                role_passed = True
                 if search_roles:
                     # Check if any part of the JD title contains the role keyword(s)
-                    if any(role in jd_title_lower for role in search_roles):
-                        role_match = True
-                    else:
-                        continue # Failed role filter
-                else:
-                    role_match = True # Pass if no role entered
+                    if not any(role in jd_title_lower for role in search_roles):
+                        role_passed = False
+                    
+                if not role_passed:
+                    continue
 
                 # If all filters passed, add to matches
-                if job_type_match and role_match:
-                    matched_jds.append({
-                        "JD Key": jd_key,
-                        "Title": jd_data.get('title', jd_key),
-                        "Job Type": jd_type_mock,
-                        "Skills Found": skills_match_count,
-                        "Experience Level": jd_data.get('experience_level', 'N/A')
-                    })
+                matched_jds.append({
+                    "JD Key": jd_key,
+                    "Title": jd_data.get('title', jd_key),
+                    "Job Type": jd_type_mock,
+                    "Skills Found": skills_match_count,
+                    "Experience Level": jd_data.get('experience_level', 'N/A')
+                })
         
         st.session_state.filtered_jds = matched_jds
         st.session_state.show_jd_details_from_filter = False # Hide details after running new filter
@@ -1826,7 +2037,7 @@ def candidate_dashboard():
     col_header, col_logout = st.columns([4, 1])
     with col_logout:
         if st.button("🚪 Log Out", use_container_width=True):
-            keys_to_delete = ['candidate_results', 'current_resume', 'manual_education', 'managed_cvs', 'current_resume_name', 'form_education', 'form_experience', 'form_certifications', 'form_projects', 'show_cv_output', 'form_name_value', 'form_email_value', 'form_phone_value', 'form_linkedin_value', 'form_github_value', 'form_summary_value', 'form_skills_value', 'form_strengths_input', 'form_cv_key_name', 'resume_uploader', 'resume_paster', 'jd_type_select', 'jd_method_select', 'jd_uploader', 'jd_paster', 'jd_linkedin_url', 'managed_jds', 'selected_jds_for_match', 'selected_jd_key', 'filter_skills_input', 'filter_min_skills', 'filter_job_type', 'filter_job_type_default', 'filter_role_input', 'filtered_jds', 'show_jd_details_from_filter']
+            keys_to_delete = ['candidate_results', 'current_resume', 'manual_education', 'managed_cvs', 'current_resume_name', 'form_education', 'form_experience', 'form_certifications', 'form_projects', 'show_cv_output', 'form_name_value', 'form_email_value', 'form_phone_value', 'form_linkedin_value', 'form_github_value', 'form_summary_value', 'form_skills_value', 'form_strengths_input', 'form_cv_key_name', 'resume_uploader', 'resume_paster', 'jd_type_select', 'jd_method_select', 'jd_uploader', 'jd_paster', 'jd_linkedin_url', 'managed_jds', 'selected_jds_for_match', 'selected_jd_key', 'filter_skills_input', 'filter_min_skills', 'filter_job_type', 'filter_job_type_default', 'filter_role_input', 'filtered_jds', 'show_jd_details_from_filter', 'last_cover_letter', 'cl_cv_name', 'cl_jd_title']
             for key in keys_to_delete:
                 if key in st.session_state:
                     del st.session_state[key]
@@ -1843,8 +2054,14 @@ def candidate_dashboard():
     if "selected_jd_key" not in st.session_state: st.session_state.selected_jd_key = None
     if "selected_jds_for_match" not in st.session_state: st.session_state.selected_jds_for_match = [] 
     if "candidate_results" not in st.session_state: st.session_state.candidate_results = None 
-    if "filtered_jds" not in st.session_state: st.session_state.filtered_jds = None # To store filter results
-    if "show_jd_details_from_filter" not in st.session_state: st.session_state.show_jd_details_from_filter = False # To manage single JD detail view state
+    if "filtered_jds" not in st.session_state: st.session_state.filtered_jds = None 
+    if "show_jd_details_from_filter" not in st.session_state: st.session_state.show_jd_details_from_filter = False 
+    
+    # NEW Cover Letter State
+    if "last_cover_letter" not in st.session_state: st.session_state.last_cover_letter = None
+    if "cl_cv_name" not in st.session_state: st.session_state.cl_cv_name = None
+    if "cl_jd_title" not in st.session_state: st.session_state.cl_jd_title = None
+
 
     # Initialize keys for personal details to ensure stability
     if "form_name_value" not in st.session_state: st.session_state.form_name_value = ""
@@ -1857,8 +2074,14 @@ def candidate_dashboard():
     if "form_strengths_input" not in st.session_state: st.session_state.form_strengths_input = ""
 
     # --- Main Content with Tabs ---
-    # ADDED 'tab_filter_jd'
-    tab_parsing, tab_management, tab_jd, tab_filter_jd, tab_match = st.tabs(["📄 Resume Parsing", "📝 CV Management (Form)", "💼 JD Management", "🔍 Filter JD", "🏆 Batch JD Match"])
+    tab_parsing, tab_management, tab_jd, tab_filter_jd, tab_match, tab_cl = st.tabs([
+        "📄 Resume Parsing", 
+        "📝 CV Management (Form)", 
+        "💼 JD Management", 
+        "🔍 Filter JD", 
+        "🏆 Batch JD Match", 
+        "💌 Generate Cover Letter" # NEW TAB
+    ])
     
     with tab_parsing:
         resume_parsing_tab()
@@ -1869,11 +2092,14 @@ def candidate_dashboard():
     with tab_jd:
         jd_management_tab()
 
-    with tab_filter_jd: # NEW TAB
+    with tab_filter_jd: 
         filter_jd_tab()
         
     with tab_match:
         batch_jd_match_tab()
+
+    with tab_cl: # NEW TAB
+        cover_letter_tab()
 
 
 # -------------------------
