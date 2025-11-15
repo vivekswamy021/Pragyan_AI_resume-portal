@@ -330,7 +330,7 @@ def mock_jd_match(cv_data, jd_data):
         role_type = "Part-time"
 
 
-    # --- 6. Summary Generation ---
+    # --- 6. Summary Generation & Final Return (FIXED for guaranteed keys) ---
     summary = f"Match based on **{len(common_skills)}/{jd_skills_count}** required skills found. "
     
     if final_score_100 > 90:
@@ -344,14 +344,14 @@ def mock_jd_match(cv_data, jd_data):
         
     return {
         "score_100": final_score_100,
-        "score_10": final_score_10, # UPDATED: Score 1-10
+        "score_10": final_score_10, 
         "summary": summary,
         "skills_percent": skills_percent,
         "experience_percent": experience_percent,
         "education_percent": education_percent,
-        "common_skills": list(common_skills), # Added for detailed report
-        "job_role": job_role,      # NEW: Included Role
-        "job_type": role_type      # NEW: Included Job Type
+        "common_skills": list(common_skills), 
+        "job_role": job_role,      # GUARANTEED
+        "job_type": role_type      # GUARANTEED
     }
 
 
@@ -1495,23 +1495,23 @@ def batch_jd_match_tab():
     
     st.markdown("---")
 
-    # --- 2. Results Display (UPDATED) ---
+    # --- 2. Results Display (FIXED - Using .get() for safety) ---
     st.markdown("#### 2. Match Report")
     
     if st.session_state.get('candidate_results'):
         results = st.session_state.candidate_results
         
-        # Create DataFrame for the main table display (UPDATED COLUMNS)
+        # Create DataFrame for the main table display (FIXED ACCESS)
         df = pd.DataFrame([
             {
                 "Rank": i + 1,
-                "Job Description (Ranked)": r['jd_title'],
-                "Role": r['job_role'],
-                "Job Type": r['job_type'],
-                "Overall Fit Score (1-10)": r['score_10'], # UPDATED SCORE
-                "Skills (%)": r['skills_percent'],
-                "Experience (%)": r['experience_percent'],
-                "Education (%)": r['education_percent']
+                "Job Description (Ranked)": r.get('jd_title', 'N/A'),
+                "Role": r.get('job_role', 'N/A'), # FIXED: Use .get()
+                "Job Type": r.get('job_type', 'N/A'), # FIXED: Use .get()
+                "Overall Fit Score (1-10)": r.get('score_10', 0), # FIXED: Use .get() with default 0
+                "Skills (%)": r.get('skills_percent', 0), # FIXED: Use .get() with default 0
+                "Experience (%)": r.get('experience_percent', 0), # FIXED: Use .get() with default 0
+                "Education (%)": r.get('education_percent', 0) # FIXED: Use .get() with default 0
             }
             for i, r in enumerate(results)
         ]).set_index("Rank")
@@ -1545,13 +1545,13 @@ def batch_jd_match_tab():
             jd_key = result['jd_key']
             jd_data = st.session_state.managed_jds.get(jd_key, {})
 
-            with st.expander(f"Report {i+1}: **{result['jd_title']}** (Score: {result['score_10']} / 10)"):
-                st.markdown(f"**Match Summary:** {result['summary']}")
+            with st.expander(f"Report {i+1}: **{result.get('jd_title', 'N/A')}** (Score: {result.get('score_10', 0)} / 10)"):
+                st.markdown(f"**Match Summary:** {result.get('summary', 'No summary available.')}")
                 
                 col1, col2, col3 = st.columns(3)
-                col1.metric("Skills Match", f"{result['skills_percent']}%", help="Weighted 50% of the overall score.")
-                col2.metric("Experience Match", f"{result['experience_percent']}%", help="Weighted 35% of the overall score.")
-                col3.metric("Education Match", f"{result['education_percent']}%", help="Weighted 15% of the overall score.")
+                col1.metric("Skills Match", f"{result.get('skills_percent', 0)}%", help="Weighted 50% of the overall score.")
+                col2.metric("Experience Match", f"{result.get('experience_percent', 0)}%", help="Weighted 35% of the overall score.")
+                col3.metric("Education Match", f"{result.get('education_percent', 0)}%", help="Weighted 15% of the overall score.")
                 
                 st.markdown("###### Skill Overlap Details")
                 
