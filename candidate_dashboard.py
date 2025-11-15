@@ -1219,6 +1219,8 @@ def process_jd_file(file, jd_type):
     
     # Save the structured JD
     st.session_state.managed_jds[jd_key] = parsed_data
+    # Also save the raw text for display purposes
+    st.session_state.managed_jds[jd_key]['raw_text'] = extracted_text
     return True, f"Successfully parsed and saved JD **{jd_key}** (Title: {parsed_data.get('title', 'N/A')})"
 
 def process_jd_text(text):
@@ -1234,8 +1236,47 @@ def process_jd_text(text):
         
     # Save the structured JD
     st.session_state.managed_jds[jd_key] = parsed_data
+    st.session_state.managed_jds[jd_key]['raw_text'] = text
     return True, f"Successfully parsed and saved JD **{jd_key}** (Title: {parsed_data.get('title', 'N/A')})"
 
+def clear_all_jds():
+    """Callback to clear all JDs."""
+    st.session_state.managed_jds = {}
+    st.session_state.selected_jd_key = None
+    st.toast("All saved JDs cleared!")
+
+def display_jd_details(key):
+    """Displays the details of the selected JD."""
+    jd_data = st.session_state.managed_jds.get(key)
+    
+    if not jd_data or isinstance(jd_data, str):
+        st.error(f"Error: JD '{key}' data is corrupted or missing.")
+        return
+
+    st.markdown(f"### JD Details: **{jd_data.get('title', 'N/A')}**")
+    
+    tab_summary, tab_raw = st.tabs(["Structured Summary", "Raw Text"])
+    
+    with tab_summary:
+        st.markdown(f"**Job Title:** {jd_data.get('title', 'N/A')}")
+        st.markdown(f"**Experience Level:** {jd_data.get('experience_level', 'N/A')}")
+        
+        st.markdown("#### Required Skills")
+        st.markdown("* " + "\n* ".join(jd_data.get('required_skills', ['N/A'])))
+
+        st.markdown("#### Qualifications")
+        st.markdown("* " + "\n* ".join(jd_data.get('qualifications', ['N/A'])))
+        
+        st.markdown("#### Responsibilities")
+        st.markdown("* " + "\n* ".join(jd_data.get('responsibilities', ['N/A'])))
+
+    with tab_raw:
+        raw_text = jd_data.get('raw_text', 'Raw text not saved/available.')
+        st.text_area("JD Raw Text", value=raw_text, height=400, disabled=True)
+    
+    if st.button("⬅️ Hide Details", key="hide_jd_details"):
+        st.session_state.selected_jd_key = None
+        st.rerun()
 
 def jd_management_tab():
     st.header("Job Description (JD) Management")
@@ -1333,28 +1374,67 @@ def jd_management_tab():
                 st.warning("Please enter a LinkedIn Job URL.")
 
     st.markdown("---")
-    st.markdown("#### Saved Job Descriptions")
+    st.markdown("#### 3. Saved Job Descriptions")
+    
+    # --- START REPLACEMENT LOGIC ---
     if st.session_state.managed_jds:
-        jd_keys = list(st.session_state.managed_jds.keys())
-        jd_info = []
-        for key in jd_keys:
-            jd_data = st.session_state.managed_jds[key]
-            if isinstance(jd_data, dict):
-                jd_info.append({
-                    "Key": key, 
-                    "Title": jd_data.get('title', 'N/A'), 
-                    "Skills": len(jd_data.get('required_skills', []))
-                })
-            else:
-                 jd_info.append({
-                    "Key": key, 
-                    "Title": "Parsing Error/Corrupted Data", 
-                    "Skills": "N/A"
-                })
+        # Check if the JD list is corrupted or contains only error strings
+        jd_keys = [k for k, v in st.session_state.managed_jds.items() if isinstance(v, dict)]
+        error_keys = [k for k, v in st.session_state.managed_jds.items() if isinstance(v, str)]
+        
+        # Display the clear button
+        st.button("🗑️ Clear All JDs", key="clear_all_jds", on_click=clear_all_jds)
 
-        st.dataframe(jd_info, use_container_width=True, hide_index=True)
+        if st.session_state.get('selected_jd_key'):
+            display_jd_details(st.session_state.selected_jd_key)
+        else:
+            if jd_keys:
+                jd_info = []
+                for key in jd_keys:
+                    jd_data = st.session_state.managed_jds[key]
+                    # Get the first 3 skills for display
+                    skills_preview = ', '.join(jd_data.get('required_skills', ['No skills listed'])[:3])
+                    
+                    jd_info.append({
+                        "Key": key, 
+                        "Title": jd_data.get('title', 'N/A'), 
+                        "Role": jd_data.get('role', 'N/A'),
+                        "Skills Preview": skills_preview + ('...' if len(jd_data.get('required_skills', [])) > 3 else '')
+                    })
+                
+                # Convert to DataFrame for Streamlit display
+                df = st.dataframe(
+                    jd_info, 
+                    column_order=("Key", "Title", "Skills Preview"),
+                    use_container_width=True, 
+                    hide_index=True,
+                    column_config={
+                        "Key": st.column_config.Column(label="JD Key", width="small"),
+                        "Title": st.column_config.Column(label="Job Title", width="medium"),
+                        "Skills Preview": st.column_config.Column(label="Key Skills", width="large")
+                    }
+                )
+                
+                # Manual buttons for action
+                st.markdown("###### View JD Details")
+                
+                cols = st.columns(min(len(jd_keys), 5)) # Limit columns to 5 for space
+                for i, key in enumerate(jd_keys):
+                    with cols[i % len(cols)]:
+                        if st.button(f"View ({i+1})", key=f"view_jd_btn_{key}", use_container_width=True):
+                            st.session_state.selected_jd_key = key
+                            st.rerun()
+            
+            if error_keys:
+                 st.error("The following keys contain corrupted or failed parsing data and cannot be displayed structured details:")
+                 st.code("\n".join(error_keys), language='text')
+
+            if not jd_keys and not error_keys:
+                st.info("No JDs saved yet. Add one above to enable batch matching.")
+                
     else:
         st.info("No JDs saved yet. Add one above to enable batch matching.")
+    # --- END REPLACEMENT LOGIC ---
 
 
 # -------------------------
@@ -1378,7 +1458,7 @@ def candidate_dashboard():
     col_header, col_logout = st.columns([4, 1])
     with col_logout:
         if st.button("🚪 Log Out", use_container_width=True):
-            keys_to_delete = ['candidate_results', 'current_resume', 'manual_education', 'managed_cvs', 'current_resume_name', 'form_education', 'form_experience', 'form_certifications', 'form_projects', 'show_cv_output', 'form_name_value', 'form_email_value', 'form_phone_value', 'form_linkedin_value', 'form_github_value', 'form_summary_value', 'form_skills_value', 'form_strengths_input', 'form_cv_key_name', 'resume_uploader', 'resume_paster', 'jd_type_select', 'jd_method_select', 'jd_uploader', 'jd_paster', 'jd_linkedin_url', 'managed_jds', 'selected_jds_for_match']
+            keys_to_delete = ['candidate_results', 'current_resume', 'manual_education', 'managed_cvs', 'current_resume_name', 'form_education', 'form_experience', 'form_certifications', 'form_projects', 'show_cv_output', 'form_name_value', 'form_email_value', 'form_phone_value', 'form_linkedin_value', 'form_github_value', 'form_summary_value', 'form_skills_value', 'form_strengths_input', 'form_cv_key_name', 'resume_uploader', 'resume_paster', 'jd_type_select', 'jd_method_select', 'jd_uploader', 'jd_paster', 'jd_linkedin_url', 'managed_jds', 'selected_jds_for_match', 'selected_jd_key']
             for key in keys_to_delete:
                 if key in st.session_state:
                     del st.session_state[key]
@@ -1392,6 +1472,7 @@ def candidate_dashboard():
     if "managed_jds" not in st.session_state: st.session_state.managed_jds = {} # Initialized for JDs
     if "current_resume_name" not in st.session_state: st.session_state.current_resume_name = None 
     if "show_cv_output" not in st.session_state: st.session_state.show_cv_output = None 
+    if "selected_jd_key" not in st.session_state: st.session_state.selected_jd_key = None # New state for JD details view
     
     # Initialize keys for personal details to ensure stability
     if "form_name_value" not in st.session_state: st.session_state.form_name_value = ""
