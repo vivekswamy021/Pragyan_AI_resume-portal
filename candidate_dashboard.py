@@ -353,8 +353,7 @@ def mock_jd_match(cv_data, jd_data):
     return f"{final_score}%", summary
 
 # --- Shared Manual Input Logic (CV Form) ---
-# ... (Functions like save_form_cv, add_education_entry, etc. are omitted for brevity 
-# but are included in the full code below to keep it runnable)
+# ... (All form helper functions remain the same)
 
 def save_form_cv():
     """
@@ -476,7 +475,7 @@ def remove_entry(index, state_key, entry_type='Item'):
             
         del st.session_state[state_key][index]
         st.toast(f"Removed {entry_type}: {removed_name}")
-# ... (CV Generation/Display Logic functions remain the same)
+
 def format_cv_to_markdown(cv_data, cv_name):
     """Formats the structured CV data into a viewable Markdown string."""
     md = f"""
@@ -580,7 +579,7 @@ def generate_and_display_cv(cv_name):
         
     cv_data = st.session_state.managed_cvs[cv_name]
     
-    st.markdown(f"### 📄 CV View: **{cv_name}**")
+    st.markdown(f"### 📄 CV View: **{cv_data.get('name', cv_name)}**")
     
     tab_md, tab_json, tab_pdf = st.tabs(["Markdown View", "JSON Data", "HTML/PDF Download"])
 
@@ -1136,7 +1135,7 @@ def jd_management_tab():
 
 
 # -------------------------
-# BATCH JD MATCH TAB CONTENT
+# BATCH JD MATCH TAB CONTENT (FIXED)
 # -------------------------
 
 def batch_jd_match_tab():
@@ -1145,8 +1144,10 @@ def batch_jd_match_tab():
 
     st.markdown("---")
 
-    # 1. Check for Active CV
+    # 1. Check for Active CV (FIX: Only check existence in managed_cvs)
     current_cv_name = st.session_state.get('current_resume_name')
+    
+    # The crucial fix: check if the resume name is set AND if the corresponding data exists.
     if not current_cv_name or current_cv_name not in st.session_state.managed_cvs:
         st.warning("⚠️ **No Active CV Detected.** Please parse a resume or save a CV using the 'Resume Parsing' or 'CV Management' tabs before matching.")
         return
