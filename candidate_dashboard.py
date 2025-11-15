@@ -1376,9 +1376,9 @@ def jd_management_tab():
     st.markdown("---")
     st.markdown("#### 3. Saved Job Descriptions")
     
-    # --- START REPLACEMENT LOGIC ---
+    # --- START REPLACEMENT LOGIC (REMOVED TABLE) ---
     if st.session_state.managed_jds:
-        # Check if the JD list is corrupted or contains only error strings
+        # Separate valid JDs from error strings
         jd_keys = [k for k, v in st.session_state.managed_jds.items() if isinstance(v, dict)]
         error_keys = [k for k, v in st.session_state.managed_jds.items() if isinstance(v, str)]
         
@@ -1386,47 +1386,38 @@ def jd_management_tab():
         st.button("🗑️ Clear All JDs", key="clear_all_jds", on_click=clear_all_jds)
 
         if st.session_state.get('selected_jd_key'):
+            # If a JD is selected, display its details
             display_jd_details(st.session_state.selected_jd_key)
         else:
             if jd_keys:
-                jd_info = []
-                for key in jd_keys:
-                    jd_data = st.session_state.managed_jds[key]
-                    # Get the first 3 skills for display
-                    skills_preview = ', '.join(jd_data.get('required_skills', ['No skills listed'])[:3])
-                    
-                    jd_info.append({
-                        "Key": key, 
-                        "Title": jd_data.get('title', 'N/A'), 
-                        "Role": jd_data.get('role', 'N/A'),
-                        "Skills Preview": skills_preview + ('...' if len(jd_data.get('required_skills', [])) > 3 else '')
-                    })
+                st.markdown("##### Select a JD to View Details:")
                 
-                # Convert to DataFrame for Streamlit display
-                df = st.dataframe(
-                    jd_info, 
-                    column_order=("Key", "Title", "Skills Preview"),
-                    use_container_width=True, 
-                    hide_index=True,
-                    column_config={
-                        "Key": st.column_config.Column(label="JD Key", width="small"),
-                        "Title": st.column_config.Column(label="Job Title", width="medium"),
-                        "Skills Preview": st.column_config.Column(label="Key Skills", width="large")
-                    }
-                )
-                
-                # Manual buttons for action
-                st.markdown("###### View JD Details")
-                
-                cols = st.columns(min(len(jd_keys), 5)) # Limit columns to 5 for space
+                # Use columns to display JD titles and the View button
+                # Calculate max columns for layout (e.g., max 3 per row)
+                max_cols = 3 
+                cols = st.columns(max_cols) 
+
                 for i, key in enumerate(jd_keys):
-                    with cols[i % len(cols)]:
-                        if st.button(f"View ({i+1})", key=f"view_jd_btn_{key}", use_container_width=True):
-                            st.session_state.selected_jd_key = key
-                            st.rerun()
+                    jd_data = st.session_state.managed_jds[key]
+                    title = jd_data.get('title', 'N/A')
+                    
+                    # Display the entry in the current column
+                    with cols[i % max_cols]:
+                        with st.container(border=True):
+                            st.markdown(f"**{i+1}. {title}**")
+                            # Extract 2 key skills for a quick preview
+                            skills_preview = ', '.join(jd_data.get('required_skills', ['No skills listed'])[:2])
+                            if len(jd_data.get('required_skills', [])) > 2:
+                                skills_preview += '...'
+                                
+                            st.caption(f"Key: `{key}` | Skills: {skills_preview}")
+
+                            if st.button("👁️ View Details", key=f"view_jd_btn_{key}", use_container_width=True):
+                                st.session_state.selected_jd_key = key
+                                st.rerun()
             
             if error_keys:
-                 st.error("The following keys contain corrupted or failed parsing data and cannot be displayed structured details:")
+                 st.error("⚠️ The following keys contain corrupted or failed parsing data and cannot be displayed structured details:")
                  st.code("\n".join(error_keys), language='text')
 
             if not jd_keys and not error_keys:
