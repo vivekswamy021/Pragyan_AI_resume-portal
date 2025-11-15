@@ -197,13 +197,12 @@ def parse_jd_with_llm(text, jd_title="Job Description"):
 
     return parsed
 
-# --- CORE MATCHING LOGIC (ENHANCED MOCK) ---
+# --- CORE MATCHING LOGIC (ENHANCED MOCK FOR DETAILED REPORT) ---
 def mock_jd_match(cv_data, jd_data):
     """
     Compares CV data against JD data using a detailed, weighted mock calculation
-    to derive Skills, Experience, and Education match percentages.
-    
-    UPDATED: Now returns Overall Fit Score (1-10) and mock Role/Job Type.
+    to derive Skills, Experience, and Education match percentages, and generates
+    detailed strengths and gaps for the report.
     """
     
     # 1. Prepare Data 
@@ -211,7 +210,6 @@ def mock_jd_match(cv_data, jd_data):
     # Robustly process required JD skills
     jd_skills_raw = jd_data.get('required_skills', [])
     if not isinstance(jd_skills_raw, list): jd_skills_raw = []
-    # Flatten and clean the JD skills list
     jd_skills = set()
     for s in jd_skills_raw:
         if isinstance(s, str):
@@ -222,7 +220,6 @@ def mock_jd_match(cv_data, jd_data):
     # Robustly process CV skills 
     cv_skills_raw = cv_data.get('skills', [])
     if not isinstance(cv_skills_raw, list): cv_skills_raw = []
-    # Flatten and clean the CV skills list
     cv_skills = set()
     for s in cv_skills_raw:
         if isinstance(s, str):
@@ -232,22 +229,22 @@ def mock_jd_match(cv_data, jd_data):
 
     # Education/Qualification Preparation
     jd_qualifications = {q.lower() for q in jd_data.get('qualifications', []) if isinstance(q, str)}
-    cv_education = {e.get('degree', '').lower() for e in cv_data.get('education', []) if isinstance(e, dict)}
-    cv_certifications = {c.get('name', '').lower() for c in cv_data.get('certifications', []) if isinstance(c, dict)}
+    cv_education = [e.get('degree', '').lower() for e in cv_data.get('education', []) if isinstance(e, dict)]
+    cv_certifications = [c.get('name', '').lower() for c in cv_data.get('certifications', []) if isinstance(c, dict)]
     
     # Experience Preparation
-    cv_experience_roles = {e.get('role', '').lower() for e in cv_data.get('experience', []) if isinstance(e, dict)}
+    cv_experience_roles = [e.get('role', '').lower() for e in cv_data.get('experience', []) if isinstance(e, dict)]
+    cv_total_experience_count = len(cv_data.get('experience', []))
     jd_title_lower = jd_data.get('title', '').lower()
     
     # --- 2. Skills Match Calculation ---
     
     jd_skills_count = len(jd_skills)
+    common_skills = jd_skills.intersection(cv_skills)
     
     if jd_skills_count == 0:
-        skills_percent = 75 # Default high score if no required skills are listed
-        common_skills = set()
+        skills_percent = 75
     else:
-        common_skills = jd_skills.intersection(cv_skills)
         overlap_ratio = len(common_skills) / jd_skills_count
         skills_percent = int(overlap_ratio * 100)
     
@@ -256,6 +253,9 @@ def mock_jd_match(cv_data, jd_data):
 
     # --- 3. Education/Qualification Match Calculation ---
     
+    education_strengths = []
+    education_gaps = []
+
     if not jd_qualifications:
         education_percent = 70 
     else:
@@ -263,11 +263,19 @@ def mock_jd_match(cv_data, jd_data):
         match_count = 0
         
         for jd_qual in jd_qualifications:
+            found = False
             # Check for substring match in education or certification
             if any(jd_qual in edu for edu in cv_education):
                  match_count += 1
+                 education_strengths.append(f"The candidate has a degree relevant to the requirement: {jd_qual.title()}.")
+                 found = True
             elif any(jd_qual in cert for cert in cv_certifications):
                  match_count += 1
+                 education_strengths.append(f"The candidate holds a certification relevant to the requirement: {jd_qual.title()}.")
+                 found = True
+
+            if not found and 'certification' not in jd_qual and 'degree' not in jd_qual:
+                 education_gaps.append(f"The candidate does not clearly mention a required qualification: {jd_qual.title()}.")
 
         if required_count > 0:
             education_percent = int((match_count / required_count) * 100)
@@ -279,94 +287,127 @@ def mock_jd_match(cv_data, jd_data):
 
     # --- 4. Experience Match Calculation ---
     
+    experience_strengths = []
+    experience_gaps = []
+    
     experience_level_jd = jd_data.get('experience_level', 'mid-level').lower()
     
     # Check if any CV role title contains JD title (or vice versa, for broader match)
     cv_has_relevant_role = any(
         (jd_title_lower in role or role in jd_title_lower)
-        and (len(role) > 5 or len(jd_title_lower) > 5) # Avoid matching short, generic words
+        and (len(role) > 5 or len(jd_title_lower) > 5)
         for role in cv_experience_roles
     )
     
-    cv_years_mock = len(cv_data.get('experience', []))
-    
     exp_score = 0
     
-    if cv_years_mock > 0:
+    if cv_total_experience_count > 0:
          exp_score += 10
+         experience_strengths.append("The candidate has relevant professional experience mentioned in their CV.")
+    else:
+         experience_gaps.append("The resume lacks any listed professional experience in the field, which is a significant requirement.")
          
     if cv_has_relevant_role:
         exp_score += 40 
+        experience_strengths.append(f"The candidate has held a role (e.g., '{list(cv_experience_roles)[0].title()}') that is highly relevant to the JD title.")
         
-    if experience_level_jd == 'senior' and cv_years_mock >= 5:
+    required_years = 0
+    if experience_level_jd == 'senior': required_years = 5
+    elif experience_level_jd == 'mid-level': required_years = 2
+        
+    if cv_total_experience_count >= required_years:
         exp_score += 40
-    elif experience_level_jd == 'mid-level' and cv_years_mock >= 2:
-        exp_score += 40
-    elif experience_level_jd == 'entry' and cv_years_mock >= 0:
-         exp_score += 40
+        experience_strengths.append(f"The candidate's experience level (approx. {cv_total_experience_count} roles) aligns with the '{experience_level_jd.title()}' requirement.")
+    elif required_years > 0:
+         experience_gaps.append(f"The resume does not meet the minimum required experience level of '{experience_level_jd.title()}' (approx. {required_years} years/roles).")
     
-    exp_score += min(10, cv_years_mock * 2) 
+    exp_score += min(10, cv_total_experience_count * 2) 
 
     experience_percent = max(0, min(100, exp_score))
     
-    # --- 5. Final Fit Score (Weighted Average) ---
+    # --- 5. Generate Detailed Report Text ---
+    
+    # Strengths/Matches based on skills
+    skills_strengths = []
+    if common_skills:
+        # Pick 3-5 of the best matches for the report
+        top_skills = list(common_skills)[:5]
+        skills_strengths.append(f"The resume mentions **{', '.join([s.title() for s in top_skills])}**, which are core technical skills for this role.")
+        if len(common_skills) > 5:
+             skills_strengths[-1] += f" (and {len(common_skills) - 5} more matching skills)."
+
+    # Gaps/Areas for Improvement based on skills
+    missing_skills = jd_skills - common_skills
+    skills_gaps = []
+    if missing_skills:
+        top_missing = list(missing_skills)[:3]
+        skills_gaps.append(f"The resume is missing key required skills like **{', '.join([s.title() for s in top_missing])}**.")
+        if len(missing_skills) > 3:
+             skills_gaps[-1] += f" (and {len(missing_skills) - 3} other required skills)."
+             
+    # Placeholder for soft skills/responsibilities gaps (mocked)
+    if "communication" in jd_skills and "communication" not in cv_skills:
+        skills_gaps.append("The resume lacks mention of soft skills like clear communication, which is a requirement for this client-facing role.")
+    
+    # Consolidate all report sections
+    strengths_matches = experience_strengths + education_strengths + skills_strengths
+    gaps_areas = experience_gaps + education_gaps + skills_gaps
+    
+    # Ensure there is at least one entry in each list, even if mock
+    if not strengths_matches:
+        strengths_matches.append("The candidate possesses a foundational background that shows potential for growth in this area.")
+    if not gaps_areas:
+        gaps_areas.append("Minor improvements in experience depth or advanced skill alignment could further boost the fitment score.")
+        
+    # --- 6. Final Fit Score (Weighted Average) ---
     
     # Weighting: Skills (50%), Experience (35%), Education (15%)
     weighted_score = (skills_percent * 0.50) + (experience_percent * 0.35) + (education_percent * 0.15)
     
     final_score_100 = int(weighted_score)
-    # Convert score from 0-100 to 1-10 range (rounding to one decimal place)
     final_score_10 = round(max(1, final_score_100 / 10), 1) 
 
     # --- Mock Role and Job Type based on JD ---
-    jd_title_lower = jd_data.get('title', 'Unknown Role').lower()
-    
     job_role = jd_data.get('title', 'N/A')
     role_type = "Full-time"
-    
     if 'contract' in jd_title_lower or 'temp' in jd_title_lower:
         role_type = "Contract"
     elif 'part-time' in jd_title_lower:
         role_type = "Part-time"
 
 
-    # --- 6. Summary Generation & Final Return (FIXED for guaranteed keys) ---
-    summary = f"Match based on **{len(common_skills)}/{jd_skills_count}** required skills found. "
+    # --- 7. Summary Generation & Final Return (FIXED for guaranteed keys) ---
+    overall_summary = f"The candidate has an **Overall Fit Score of {final_score_10}/10** (Skills: {skills_percent}%, Experience: {experience_percent}%, Education: {education_percent}%). "
     
-    if final_score_100 > 90:
-        summary += "Excellent match! Candidate is highly qualified and experienced."
-    elif final_score_100 > 70:
-        summary += "Strong match. Minor gaps in qualifications/experience noted but core skills align."
-    elif final_score_100 > 50:
-        summary += "Fair match. Several core requirements are met, but skill/experience gaps exist."
+    if final_score_100 > 80:
+        overall_summary += "This is an **excellent match**, requiring minimal upskilling or experience adjustment."
+    elif final_score_100 > 60:
+        overall_summary += "This is a **strong match**, with core skills and education aligning well. The focus should be on filling noted experience/gap areas."
+    elif final_score_100 > 40:
+        overall_summary += "This is a **fair match**. Significant gaps in either experience or core skills exist and must be addressed for qualification."
     else:
-        summary += "Low match. Significant gaps in core requirements observed."
+        overall_summary += "This is a **low match**. The candidate lacks fundamental alignment with the JD's core requirements."
         
     return {
         "score_100": final_score_100,
         "score_10": final_score_10, 
-        "summary": summary,
+        "summary": overall_summary, # This is the overall summary
+        "strengths_matches": strengths_matches, # New detailed strengths
+        "gaps_areas": gaps_areas, # New detailed gaps
         "skills_percent": skills_percent,
         "experience_percent": experience_percent,
         "education_percent": education_percent,
         "common_skills": list(common_skills), 
-        "job_role": job_role,      # GUARANTEED
-        "job_type": role_type      # GUARANTEED
+        "job_role": job_role,
+        "job_type": role_type
     }
 
 
-# --- PDF/HTML Generation & CV Display Functions ---
-
-def generate_pdf_mock(cv_data, cv_name):
-    """Mocks the generation of a PDF file and returns its path/bytes."""
-    
-    warning_message = f"🚨 PDF generation is disabled! Use the 'Download CV as HTML (Print-to-PDF)' button instead. The actual library (fpdf) is not installed."
-    
-    return warning_message.encode('utf-8') 
+# --- (Other utility functions like format_cv_to_html, format_cv_to_markdown, generate_and_display_cv, and the form functions remain unchanged) ---
 
 def format_cv_to_html(cv_data, cv_name):
     """Formats the structured CV data into a clean HTML string for printing."""
-    
+    # ... (Content remains unchanged) ...
     def list_to_html(items, tag='li'):
         if not items:
             return ""
@@ -499,6 +540,7 @@ def format_cv_to_html(cv_data, cv_name):
 
 def format_cv_to_markdown(cv_data, cv_name):
     """Formats the structured CV data into a viewable Markdown string."""
+    # ... (Content remains unchanged) ...
     md = f"""
 # {cv_data.get('name', cv_name)}
 ### Contact & Links
@@ -656,7 +698,7 @@ def generate_and_display_cv(cv_name):
             key=f"download_html_btn_{cv_name}"
         )
 
-# --- Shared Manual Input Logic (CV Form) ---
+# --- (Form/State Management functions remain unchanged) ---
 
 def save_form_cv():
     """
@@ -1407,39 +1449,28 @@ def jd_management_tab():
 
 
 # -------------------------
-# BATCH JD MATCH TAB CONTENT (FIXED)
+# BATCH JD MATCH TAB CONTENT (FIXED: CV Selection and Detailed Report)
 # -------------------------
 
 def batch_jd_match_tab():
     st.header("🏆 Batch JD Match")
-    st.caption("Select your CV and the JDs you want to match against to generate a consolidated fitment report.")
+    st.caption("Compare your current CV against all saved job descriptions.")
 
     cv_keys = [k for k, v in st.session_state.managed_cvs.items() if isinstance(v, dict) and v.get('name')]
     jd_keys_valid = [k for k, v in st.session_state.managed_jds.items() if isinstance(v, dict) and v.get('title')]
     
-    st.markdown("#### 1. Select CV and JDs")
+    st.markdown("#### 1. Select JDs to Match Against")
 
-    # --- CV Selection ---
+    # --- CV Selection (Automated) ---
+    selected_cv_key = None
+    cv_data = None
     if not cv_keys:
         st.warning("⚠️ **No CVs available.** Please upload or create a CV in the 'Resume Parsing' or 'CV Management' tabs.")
-        selected_cv = None
-        cv_data = None
     else:
-        # Use the currently selected resume name if available, otherwise default to the first
-        default_cv_index = cv_keys.index(st.session_state.current_resume_name) if st.session_state.current_resume_name in cv_keys else 0
-        
-        cv_options = {k: st.session_state.managed_cvs[k].get('name', k) for k in cv_keys}
-        
-        selected_cv_key = st.selectbox(
-            "Select Candidate CV",
-            options=list(cv_options.keys()),
-            format_func=lambda k: cv_options[k],
-            index=default_cv_index,
-            key="batch_cv_selector"
-        )
-        selected_cv = selected_cv_key
+        # Automatically select the last (most recently added/modified) CV.
+        selected_cv_key = cv_keys[-1]
         cv_data = st.session_state.managed_cvs.get(selected_cv_key)
-        st.info(f"CV Selected: **{cv_data.get('name', 'N/A')}**")
+        st.success(f"CV Automatically Selected: **{cv_data.get('name', 'N/A')}** ({selected_cv_key})")
         
     st.markdown("---")
 
@@ -1450,6 +1481,7 @@ def batch_jd_match_tab():
     else:
         jd_options = {k: st.session_state.managed_jds[k].get('title', k) for k in jd_keys_valid}
         
+        # Use multiselect to allow the user to choose which JDs to run against
         selected_jds = st.multiselect(
             "Select Job Descriptions to Match Against",
             options=list(jd_options.keys()),
@@ -1457,17 +1489,16 @@ def batch_jd_match_tab():
             default=st.session_state.get('selected_jds_for_match', []),
             key="batch_jd_multiselect"
         )
-        # Persist the selection
         st.session_state.selected_jds_for_match = selected_jds
 
     st.markdown("---")
 
     # --- Match Button ---
     match_button = st.button(
-        "🚀 Run Match Analysis", 
+        f"🚀 Run Match Analysis on {len(selected_jds)} Selected JD(s)", 
         type="primary", 
         use_container_width=True, 
-        disabled=not (selected_cv and selected_jds)
+        disabled=not (selected_cv_key and selected_jds)
     )
 
     # --- Core Logic Execution ---
@@ -1488,46 +1519,43 @@ def batch_jd_match_tab():
                 else:
                     st.warning(f"Skipped JD **{jd_key}** due to corrupted data.")
         
-        # Sort results by score (highest first)
         match_results.sort(key=lambda x: x['score_100'], reverse=True)
         st.session_state.candidate_results = match_results
         st.success("Analysis Complete! Check the report below.")
     
     st.markdown("---")
 
-    # --- 2. Results Display (FIXED - Using .get() for safety) ---
+    # --- 2. Results Display (FIXED: Detailed Report) ---
     st.markdown("#### 2. Match Report")
     
     if st.session_state.get('candidate_results'):
         results = st.session_state.candidate_results
         
-        # Create DataFrame for the main table display (FIXED ACCESS)
+        # Create DataFrame for the main table display
         df = pd.DataFrame([
             {
                 "Rank": i + 1,
                 "Job Description (Ranked)": r.get('jd_title', 'N/A'),
-                "Role": r.get('job_role', 'N/A'), # FIXED: Use .get()
-                "Job Type": r.get('job_type', 'N/A'), # FIXED: Use .get()
-                "Overall Fit Score (1-10)": r.get('score_10', 0), # FIXED: Use .get() with default 0
-                "Skills (%)": r.get('skills_percent', 0), # FIXED: Use .get() with default 0
-                "Experience (%)": r.get('experience_percent', 0), # FIXED: Use .get() with default 0
-                "Education (%)": r.get('education_percent', 0) # FIXED: Use .get() with default 0
+                "Role": r.get('job_role', 'N/A'),
+                "Job Type": r.get('job_type', 'N/A'),
+                "Overall Fit Score (1-10)": r.get('score_10', 0),
+                "Skills (%)": r.get('skills_percent', 0),
+                "Experience (%)": r.get('experience_percent', 0),
+                "Education (%)": r.get('education_percent', 0)
             }
             for i, r in enumerate(results)
         ]).set_index("Rank")
         
-        # Use standard Streamlit Dataframe display (UPDATED COLUMN CONFIG)
         st.dataframe(
             df, 
             use_container_width=True,
             column_config={
                 "Overall Fit Score (1-10)": st.column_config.ProgressColumn(
                     "Overall Fit Score (1-10)",
-                    format="%.1f", # Use 1 decimal place format
+                    format="%.1f",
                     min_value=0,
                     max_value=10,
                 ),
-                # Format percentage columns with a simple progress bar for visual appeal
                 "Skills (%)": st.column_config.ProgressColumn(
                     "Skills (%)", format="%d%%", min_value=0, max_value=100
                 ),
@@ -1542,55 +1570,37 @@ def batch_jd_match_tab():
 
         st.markdown("##### Detailed Reports")
         for i, result in enumerate(results):
-            jd_key = result['jd_key']
-            jd_data = st.session_state.managed_jds.get(jd_key, {})
+            
+            score_10 = result.get('score_10', 0)
+            skills_percent = result.get('skills_percent', 0)
+            experience_percent = result.get('experience_percent', 0)
+            education_percent = result.get('education_percent', 0)
+            jd_title = result.get('jd_title', 'N/A')
+            
+            report_title = f"Report {i+1} | {jd_title} (Score: {score_10}/10 | S: {skills_percent}% | E: {experience_percent}% | Edu: {education_percent}%)"
+            
+            with st.expander(f"Rank {i+1} | {report_title}"):
+                
+                # Overall Fit Score
+                st.markdown(f"**Overall Fit Score:** {score_10}/10")
+                st.progress(score_10 / 10)
+                
+                # Section Match Analysis
+                st.markdown(f"--- Section Match Analysis --- **Skills Match:** {skills_percent}% **Experience Match:** {experience_percent}% **Education Match:** {education_percent}%")
+                
+                # Strengths/Matches
+                st.markdown("### Strengths/Matches:")
+                strengths = result.get('strengths_matches', ['No specific strengths identified.'])
+                st.markdown("\n".join([f"* {s}" for s in strengths]))
 
-            with st.expander(f"Report {i+1}: **{result.get('jd_title', 'N/A')}** (Score: {result.get('score_10', 0)} / 10)"):
-                st.markdown(f"**Match Summary:** {result.get('summary', 'No summary available.')}")
+                # Gaps/Areas for Improvement
+                st.markdown("### Gaps/Areas for Improvement:")
+                gaps = result.get('gaps_areas', ['No specific gaps identified.'])
+                st.markdown("\n".join([f"* {g}" for g in gaps]))
                 
-                col1, col2, col3 = st.columns(3)
-                col1.metric("Skills Match", f"{result.get('skills_percent', 0)}%", help="Weighted 50% of the overall score.")
-                col2.metric("Experience Match", f"{result.get('experience_percent', 0)}%", help="Weighted 35% of the overall score.")
-                col3.metric("Education Match", f"{result.get('education_percent', 0)}%", help="Weighted 15% of the overall score.")
-                
-                st.markdown("###### Skill Overlap Details")
-                
-                # Fetch clean skills list/set from the matching function output
-                common_skills = set(result.get('common_skills', []))
-                
-                # Fetch clean required skills set from the JD data used in matching
-                jd_skills_raw = jd_data.get('required_skills', [])
-                if not isinstance(jd_skills_raw, list): jd_skills_raw = []
-                required_skills = set()
-                for s in jd_skills_raw:
-                    if isinstance(s, str):
-                        required_skills.update(skill.lower().strip() for skill in s.split(',') if skill.strip())
-                    elif isinstance(s, list):
-                        required_skills.update(skill.lower().strip() for item in s for skill in str(item).split(',') if skill.strip())
-
-
-                missing_skills = required_skills - common_skills
-
-                st.markdown(f"**Total Required Skills:** {len(required_skills)}")
-                st.markdown(f"**Found Skills:** {len(common_skills)}")
-                
-                col_found, col_missing = st.columns(2)
-                
-                with col_found:
-                    with st.container(border=True):
-                        st.markdown("**✅ Found Skills (Matching Requirements):**")
-                        if common_skills:
-                            st.markdown("* " + "\n* ".join(sorted(list(common_skills))))
-                        else:
-                            st.info("No matching skills found in this CV for this JD.")
-
-                with col_missing:
-                    with st.container(border=True):
-                        st.markdown("**❌ Missing Skills (Required by JD):**")
-                        if missing_skills:
-                            st.markdown("* " + "\n* ".join(sorted(list(missing_skills))))
-                        else:
-                            st.success("All required skills found!")
+                # Overall Summary
+                st.markdown("### Overall Summary:")
+                st.markdown(result.get('summary', 'No overall summary provided.'))
 
     else:
         st.info("Run the Match Analysis above to generate the report.")
