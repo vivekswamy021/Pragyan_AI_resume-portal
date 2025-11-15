@@ -78,8 +78,8 @@ def format_cv_to_html(cv_data, cv_name):
         return f"""
         <div class="entry">
             <h3>{proj.get('name', 'N/A')}</h3>
-            <p><em>Description:</em> {proj.get('description', 'N/A')}</p>
-            <p><em>Technologies:</em> {tech_str} {link}</p>
+            <p><strong>Description:</strong> {proj.get('description', 'N/A')}</p>
+            <p><strong>Technologies:</strong> {tech_str} {link}</p>
         </div>
         """
         
@@ -473,7 +473,7 @@ def format_cv_to_markdown(cv_data, cv_name):
             tech_str = ', '.join([str(t) for t in proj.get('technologies', [])])
             app_link = proj.get('app_link', 'N/A')
             
-            # FIX APPLIED HERE: Displaying the app link if it exists and is not 'N/A'
+            # Displaying the app link if it exists and is not 'N/A'
             link_md = ""
             if app_link and app_link != 'N/A':
                 link_md = f"\n* **App/Repo Link:** [{app_link}]({app_link})"
@@ -920,6 +920,87 @@ def tab_cv_management():
 
     cv_form_content()
 
+# -------------------------
+# NEW: JD MANAGEMENT TAB CONTENT
+# -------------------------
+
+def jd_management_tab():
+    st.header("Job Description (JD) Management")
+    st.caption("Upload or paste job descriptions for later matching and analysis.")
+    
+    st.markdown("#### 1. Select JD Type")
+    jd_type = st.radio(
+        "Choose JD scope:",
+        ["Single JD", "Multiple JD"],
+        index=0,
+        horizontal=True,
+        key="jd_type_select"
+    )
+    
+    st.markdown("---")
+    
+    st.markdown("#### 2. Add JD by:")
+    
+    jd_method = st.radio(
+        "Choose Method:",
+        ["Upload File", "Paste Text", "LinkedIn URL"],
+        index=0,
+        horizontal=True,
+        key="jd_method_select"
+    )
+
+    st.markdown("---")
+
+    if jd_method == "Upload File":
+        st.markdown("##### Upload JD File(s)")
+        
+        uploaded_jds = st.file_uploader(
+            "Drag and drop file(s) here",
+            type=['pdf', 'txt', 'docx'],
+            accept_multiple_files=(jd_type == "Multiple JD"),
+            key="jd_uploader"
+        )
+        st.caption("Limit 200MB per file • PDF, TXT, DOCX")
+        
+        if st.button("Add JD(s)", type="primary", use_container_width=True, key="upload_jd_button"):
+            if uploaded_jds:
+                num_files = len(uploaded_jds) if isinstance(uploaded_jds, list) else 1
+                st.success(f"Successfully uploaded {num_files} JD file(s). (Parsing/processing logic would go here)")
+            else:
+                st.warning("Please upload at least one JD file.")
+        
+    elif jd_method == "Paste Text":
+        st.markdown("##### Paste JD Text")
+        
+        pasted_jd_text = st.text_area(
+            "Paste the job description text here:",
+            height=300,
+            key="jd_paster"
+        )
+        
+        if st.button("Add JD", type="primary", use_container_width=True, key="paste_jd_button"):
+            if pasted_jd_text.strip():
+                st.success("Successfully added JD from pasted text. (Parsing/processing logic would go here)")
+            else:
+                st.warning("Please paste the JD text.")
+
+    elif jd_method == "LinkedIn URL":
+        st.markdown("##### Enter LinkedIn URL")
+        
+        linkedin_url = st.text_input(
+            "Enter the full LinkedIn Job URL:",
+            key="jd_linkedin_url",
+            placeholder="https://www.linkedin.com/jobs/view/..."
+        )
+        
+        if st.button("Fetch and Add JD", type="primary", use_container_width=True, key="url_jd_button"):
+            if linkedin_url.strip():
+                if "linkedin.com/jobs/view" in linkedin_url:
+                    st.success(f"Attempting to fetch JD from URL: {linkedin_url}. (Web scraping logic would execute here)")
+                else:
+                    st.error("Please enter a valid LinkedIn Job URL.")
+            else:
+                st.warning("Please enter a LinkedIn Job URL.")
 
 # -------------------------
 # CANDIDATE DASHBOARD FUNCTION
@@ -931,7 +1012,7 @@ def candidate_dashboard():
     col_header, col_logout = st.columns([4, 1])
     with col_logout:
         if st.button("🚪 Log Out", use_container_width=True):
-            keys_to_delete = ['candidate_results', 'current_resume', 'manual_education', 'managed_cvs', 'current_resume_name', 'form_education', 'form_experience', 'form_certifications', 'form_projects', 'show_cv_output', 'form_name_value', 'form_email_value', 'form_phone_value', 'form_linkedin_value', 'form_github_value', 'form_summary_value', 'form_skills_value', 'form_strengths_input', 'form_cv_key_name', 'resume_uploader', 'resume_paster']
+            keys_to_delete = ['candidate_results', 'current_resume', 'manual_education', 'managed_cvs', 'current_resume_name', 'form_education', 'form_experience', 'form_certifications', 'form_projects', 'show_cv_output', 'form_name_value', 'form_email_value', 'form_phone_value', 'form_linkedin_value', 'form_github_value', 'form_summary_value', 'form_skills_value', 'form_strengths_input', 'form_cv_key_name', 'resume_uploader', 'resume_paster', 'jd_type_select', 'jd_method_select', 'jd_uploader', 'jd_paster', 'jd_linkedin_url']
             for key in keys_to_delete:
                 if key in st.session_state:
                     del st.session_state[key]
@@ -956,13 +1037,16 @@ def candidate_dashboard():
     if "form_strengths_input" not in st.session_state: st.session_state.form_strengths_input = ""
 
     # --- Main Content with New Tabs ---
-    tab_parsing, tab_management = st.tabs(["📄 Resume Parsing", "📝 CV Management (Form)"])
+    tab_parsing, tab_management, tab_jd = st.tabs(["📄 Resume Parsing", "📝 CV Management (Form)", "💼 JD Management"])
     
     with tab_parsing:
         resume_parsing_tab()
         
     with tab_management:
         tab_cv_management()
+        
+    with tab_jd:
+        jd_management_tab()
 
 
 # -------------------------
