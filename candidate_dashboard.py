@@ -1219,7 +1219,7 @@ def process_jd_file(file, jd_type):
     
     # Save the structured JD
     st.session_state.managed_jds[jd_key] = parsed_data
-    # Also save the raw text for display purposes
+    # Also save the raw text for display purposes (RETAINED FOR PARSING LOGIC BUT NOT DISPLAYED)
     st.session_state.managed_jds[jd_key]['raw_text'] = extracted_text
     return True, f"Successfully parsed and saved JD **{jd_key}** (Title: {parsed_data.get('title', 'N/A')})"
 
@@ -1236,7 +1236,7 @@ def process_jd_text(text):
         
     # Save the structured JD
     st.session_state.managed_jds[jd_key] = parsed_data
-    st.session_state.managed_jds[jd_key]['raw_text'] = text
+    st.session_state.managed_jds[jd_key]['raw_text'] = text # RETAINED FOR PARSING LOGIC BUT NOT DISPLAYED
     return True, f"Successfully parsed and saved JD **{jd_key}** (Title: {parsed_data.get('title', 'N/A')})"
 
 def clear_all_jds():
@@ -1245,8 +1245,9 @@ def clear_all_jds():
     st.session_state.selected_jd_key = None
     st.toast("All saved JDs cleared!")
 
+## 🎯 MODIFIED FUNCTION: REMOVED RAW TEXT TAB/DISPLAY ##
 def display_jd_details(key):
-    """Displays the details of the selected JD."""
+    """Displays the details of the selected JD (Structured Summary ONLY)."""
     jd_data = st.session_state.managed_jds.get(key)
     
     if not jd_data or isinstance(jd_data, str):
@@ -1255,28 +1256,25 @@ def display_jd_details(key):
 
     st.markdown(f"### JD Details: **{jd_data.get('title', 'N/A')}**")
     
-    tab_summary, tab_raw = st.tabs(["Structured Summary", "Raw Text"])
+    # Only display the Structured Summary section (removed tab structure)
     
-    with tab_summary:
-        st.markdown(f"**Job Title:** {jd_data.get('title', 'N/A')}")
-        st.markdown(f"**Experience Level:** {jd_data.get('experience_level', 'N/A')}")
-        
-        st.markdown("#### Required Skills")
-        st.markdown("* " + "\n* ".join(jd_data.get('required_skills', ['N/A'])))
+    st.markdown("#### Structured Summary")
+    st.markdown(f"**Job Title:** {jd_data.get('title', 'N/A')}")
+    st.markdown(f"**Experience Level:** {jd_data.get('experience_level', 'N/A')}")
+    
+    st.markdown("#### Required Skills")
+    st.markdown("* " + "\n* ".join(jd_data.get('required_skills', ['N/A'])))
 
-        st.markdown("#### Qualifications")
-        st.markdown("* " + "\n* ".join(jd_data.get('qualifications', ['N/A'])))
-        
-        st.markdown("#### Responsibilities")
-        st.markdown("* " + "\n* ".join(jd_data.get('responsibilities', ['N/A'])))
-
-    with tab_raw:
-        raw_text = jd_data.get('raw_text', 'Raw text not saved/available.')
-        st.text_area("JD Raw Text", value=raw_text, height=400, disabled=True)
+    st.markdown("#### Qualifications")
+    st.markdown("* " + "\n* ".join(jd_data.get('qualifications', ['N/A'])))
+    
+    st.markdown("#### Responsibilities")
+    st.markdown("* " + "\n* ".join(jd_data.get('responsibilities', ['N/A'])))
     
     if st.button("⬅️ Hide Details", key="hide_jd_details"):
         st.session_state.selected_jd_key = None
         st.rerun()
+## 🎯 END MODIFIED FUNCTION ##
 
 def jd_management_tab():
     st.header("Job Description (JD) Management")
