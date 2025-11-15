@@ -143,7 +143,7 @@ def parse_cv_with_llm(text):
             flat_skills = []
             for s in parsed['skills']:
                 if isinstance(s, str):
-                    flat_skills.extend([skill.strip() for skill in s.split(',')])
+                    flat_skills.extend([skill.strip() for skill in s.split(',') if skill.strip()])
                 elif isinstance(s, (list, dict)):
                     # Handle complex LLM output like [{'name': 'Python'}, {'name': 'SQL'}]
                     flat_skills.extend([str(item) for item in s])
@@ -202,9 +202,11 @@ def mock_jd_match(cv_data, jd_data):
     """
     Compares CV data against JD data using a detailed, weighted mock calculation
     to derive Skills, Experience, and Education match percentages.
+    
+    UPDATED: Now returns Overall Fit Score (1-10) and mock Role/Job Type.
     """
     
-    # 1. Prepare Data (with enhanced cleaning)
+    # 1. Prepare Data 
     
     # Robustly process required JD skills
     jd_skills_raw = jd_data.get('required_skills', [])
@@ -217,7 +219,7 @@ def mock_jd_match(cv_data, jd_data):
         elif isinstance(s, list):
             jd_skills.update(skill.lower().strip() for item in s for skill in str(item).split(',') if skill.strip())
             
-    # Robustly process CV skills (already cleaned in parse_cv_with_llm, but reinforce here)
+    # Robustly process CV skills 
     cv_skills_raw = cv_data.get('skills', [])
     if not isinstance(cv_skills_raw, list): cv_skills_raw = []
     # Flatten and clean the CV skills list
@@ -313,7 +315,20 @@ def mock_jd_match(cv_data, jd_data):
     weighted_score = (skills_percent * 0.50) + (experience_percent * 0.35) + (education_percent * 0.15)
     
     final_score_100 = int(weighted_score)
-    final_score_10 = round(final_score_100 / 10, 1)
+    # Convert score from 0-100 to 1-10 range (rounding to one decimal place)
+    final_score_10 = round(max(1, final_score_100 / 10), 1) 
+
+    # --- Mock Role and Job Type based on JD ---
+    jd_title_lower = jd_data.get('title', 'Unknown Role').lower()
+    
+    job_role = jd_data.get('title', 'N/A')
+    role_type = "Full-time"
+    
+    if 'contract' in jd_title_lower or 'temp' in jd_title_lower:
+        role_type = "Contract"
+    elif 'part-time' in jd_title_lower:
+        role_type = "Part-time"
+
 
     # --- 6. Summary Generation ---
     summary = f"Match based on **{len(common_skills)}/{jd_skills_count}** required skills found. "
@@ -329,12 +344,14 @@ def mock_jd_match(cv_data, jd_data):
         
     return {
         "score_100": final_score_100,
-        "score_10": final_score_10,
+        "score_10": final_score_10, # UPDATED: Score 1-10
         "summary": summary,
         "skills_percent": skills_percent,
         "experience_percent": experience_percent,
         "education_percent": education_percent,
-        "common_skills": list(common_skills) # Added for detailed report
+        "common_skills": list(common_skills), # Added for detailed report
+        "job_role": job_role,      # NEW: Included Role
+        "job_type": role_type      # NEW: Included Job Type
     }
 
 
@@ -1478,35 +1495,48 @@ def batch_jd_match_tab():
     
     st.markdown("---")
 
-    # --- 2. Results Display ---
+    # --- 2. Results Display (UPDATED) ---
     st.markdown("#### 2. Match Report")
     
     if st.session_state.get('candidate_results'):
         results = st.session_state.candidate_results
         
-        # Create DataFrame for the main table display
+        # Create DataFrame for the main table display (UPDATED COLUMNS)
         df = pd.DataFrame([
             {
-                "Job Title": r['jd_title'],
-                "Overall Fit (%)": r['score_100'],
-                "Skills Match (%)": r['skills_percent'],
-                "Experience Match (%)": r['experience_percent'],
-                "Education Match (%)": r['education_percent']
+                "Rank": i + 1,
+                "Job Description (Ranked)": r['jd_title'],
+                "Role": r['job_role'],
+                "Job Type": r['job_type'],
+                "Overall Fit Score (1-10)": r['score_10'], # UPDATED SCORE
+                "Skills (%)": r['skills_percent'],
+                "Experience (%)": r['experience_percent'],
+                "Education (%)": r['education_percent']
             }
-            for r in results
-        ]).set_index("Job Title")
+            for i, r in enumerate(results)
+        ]).set_index("Rank")
         
-        # Use standard Streamlit Dataframe display (FIXED from Matplotlib Error)
+        # Use standard Streamlit Dataframe display (UPDATED COLUMN CONFIG)
         st.dataframe(
             df, 
             use_container_width=True,
             column_config={
-                "Overall Fit (%)": st.column_config.ProgressColumn(
-                    "Overall Fit (%)",
-                    format="%d%%",
+                "Overall Fit Score (1-10)": st.column_config.ProgressColumn(
+                    "Overall Fit Score (1-10)",
+                    format="%.1f", # Use 1 decimal place format
                     min_value=0,
-                    max_value=100,
-                )
+                    max_value=10,
+                ),
+                # Format percentage columns with a simple progress bar for visual appeal
+                "Skills (%)": st.column_config.ProgressColumn(
+                    "Skills (%)", format="%d%%", min_value=0, max_value=100
+                ),
+                 "Experience (%)": st.column_config.ProgressColumn(
+                    "Experience (%)", format="%d%%", min_value=0, max_value=100
+                ),
+                 "Education (%)": st.column_config.ProgressColumn(
+                    "Education (%)", format="%d%%", min_value=0, max_value=100
+                ),
             }
         )
 
@@ -1515,7 +1545,7 @@ def batch_jd_match_tab():
             jd_key = result['jd_key']
             jd_data = st.session_state.managed_jds.get(jd_key, {})
 
-            with st.expander(f"Report {i+1}: **{result['jd_title']}** (Score: {result['score_100']}%)"):
+            with st.expander(f"Report {i+1}: **{result['jd_title']}** (Score: {result['score_10']} / 10)"):
                 st.markdown(f"**Match Summary:** {result['summary']}")
                 
                 col1, col2, col3 = st.columns(3)
