@@ -151,9 +151,14 @@ def parse_cv_with_llm(text):
             # Final clean list of non-empty strings
             parsed['skills'] = [s.strip() for s in flat_skills if s.strip()]
         # --- END FIX ---
+        
+        # --- NEW: Add a flag to identify CVs created via Parsing/Upload ---
+        parsed['source_type'] = 'Parsing_Upload'
+
 
     except Exception as e:
         parsed = {"error": f"LLM parsing error: {e}", "raw_output": content}
+        parsed['source_type'] = 'Error'
 
     return parsed
 
@@ -402,8 +407,6 @@ def mock_jd_match(cv_data, jd_data):
         "job_type": role_type
     }
 
-
-# --- (Other utility functions like format_cv_to_html, format_cv_to_markdown, generate_and_display_cv, and the form functions remain unchanged) ---
 
 def format_cv_to_html(cv_data, cv_name):
     """Formats the structured CV data into a clean HTML string for printing."""
@@ -727,7 +730,9 @@ def save_form_cv():
         "experience": st.session_state.get('form_experience', []), 
         "certifications": st.session_state.get('form_certifications', []), 
         "projects": st.session_state.get('form_projects', []),
-        "strength": [s.strip() for s in st.session_state.get('form_strengths_input', '').split('\n') if s.strip()] 
+        "strength": [s.strip() for s in st.session_state.get('form_strengths_input', '').split('\n') if s.strip()],
+        # CVs created via form are flagged as 'Manual_Form'
+        "source_type": 'Manual_Form'
     }
     
     st.session_state.managed_cvs[cv_key_name] = final_cv_data
@@ -871,7 +876,7 @@ def resume_parsing_tab():
         if extracted_text.startswith("Error") or not extracted_text:
             st.error(f"Text Extraction Failed: {extracted_text}")
             error_key = f"ERROR_{file_name}_{datetime.now().strftime('%H%M')}"
-            st.session_state.managed_cvs[error_key] = extracted_text
+            st.session_state.managed_cvs[error_key] = "Extraction Error: " + extracted_text
             st.session_state.current_resume_name = error_key
             st.session_state.show_cv_output = error_key
             return
@@ -890,12 +895,16 @@ def resume_parsing_tab():
 
         candidate_name = parsed_data.get('name', 'Unknown_Candidate').replace(' ', '_')
         timestamp = datetime.now().strftime("%Y%m%d-%H%M")
-        cv_key_name = f"{candidate_name}_{timestamp}"
+        cv_key_name = f"{candidate_name}_Uploaded_{timestamp}" # Flag uploaded CVs with "Uploaded"
         
+        # Ensure 'source_type' is set to identify this CV as uploaded/parsed
+        parsed_data['source_type'] = 'Parsing_Upload'
+
         st.session_state.managed_cvs[cv_key_name] = parsed_data
         st.session_state.current_resume_name = cv_key_name
         
         if isinstance(parsed_data, dict):
+            # Load parsed data into the form state for editing
             st.session_state.form_name_value = parsed_data.get('name', '')
             st.session_state.form_email_value = parsed_data.get('email', '')
             st.session_state.form_phone_value = parsed_data.get('phone', '')
@@ -904,7 +913,6 @@ def resume_parsing_tab():
             st.session_state.form_summary_value = parsed_data.get('summary', '')
             
             if isinstance(parsed_data.get('skills'), list):
-                # Use the cleaned list of skills from the parser
                 st.session_state.form_skills_value = "\n".join([str(s) for s in parsed_data['skills']])
             else:
                  st.session_state.form_skills_value = ""
@@ -1449,39 +1457,56 @@ def jd_management_tab():
 
 
 # -------------------------
-# BATCH JD MATCH TAB CONTENT (FIXED: CV Selection and Detailed Report)
+# BATCH JD MATCH TAB CONTENT (UPDATED CV SELECTION & REPORT TABLE)
 # -------------------------
 
 def batch_jd_match_tab():
     st.header("🏆 Batch JD Match")
     st.caption("Compare your current CV against all saved job descriptions.")
 
-    cv_keys = [k for k, v in st.session_state.managed_cvs.items() if isinstance(v, dict) and v.get('name')]
-    jd_keys_valid = [k for k, v in st.session_state.managed_jds.items() if isinstance(v, dict) and v.get('title')]
+    cv_keys_all = list(st.session_state.managed_cvs.keys())
+    cv_data_items = st.session_state.managed_cvs.items()
     
-    st.markdown("#### 1. Select JDs to Match Against")
-
-    # --- CV Selection (Automated) ---
+    # 1. Filter for CVs created via the Resume Parsing tab ('Parsing_Upload')
+    parsing_cv_items = [
+        (k, v) for k, v in cv_data_items 
+        if isinstance(v, dict) and v.get('source_type') == 'Parsing_Upload'
+    ]
+    
     selected_cv_key = None
     cv_data = None
-    if not cv_keys:
+    
+    if not cv_keys_all:
         st.warning("⚠️ **No CVs available.** Please upload or create a CV in the 'Resume Parsing' or 'CV Management' tabs.")
     else:
-        # Automatically select the last (most recently added/modified) CV.
-        selected_cv_key = cv_keys[-1]
-        cv_data = st.session_state.managed_cvs.get(selected_cv_key)
-        st.success(f"CV Automatically Selected: **{cv_data.get('name', 'N/A')}** ({selected_cv_key})")
-        
+        if parsing_cv_items:
+            # Select the latest CV from the Resume Parsing tab
+            selected_cv_key = parsing_cv_items[-1][0]
+            cv_data = parsing_cv_items[-1][1]
+            st.success(f"CV Automatically Selected (from **Resume Parsing**): **{cv_data.get('name', 'N/A')}**")
+        else:
+            # Fallback to the latest CV if no Parsing_Upload CV is found
+            # Filter out error strings, then take the last one.
+            valid_cv_keys = [k for k, v in cv_data_items if isinstance(v, dict)]
+            if valid_cv_keys:
+                selected_cv_key = valid_cv_keys[-1]
+                cv_data = st.session_state.managed_cvs.get(selected_cv_key)
+                st.info(f"CV Automatically Selected (latest available): **{cv_data.get('name', 'N/A')}**")
+            else:
+                st.warning("⚠️ **No valid CVs available.** All managed CVs are either corrupted or empty.")
+
+
     st.markdown("---")
 
     # --- JD Selection ---
+    jd_keys_valid = [k for k, v in st.session_state.managed_jds.items() if isinstance(v, dict) and v.get('title')]
+
     if not jd_keys_valid:
         st.warning("⚠️ **No valid JDs available.** Please add JDs in the 'JD Management' tab.")
         selected_jds = []
     else:
         jd_options = {k: st.session_state.managed_jds[k].get('title', k) for k in jd_keys_valid}
         
-        # Use multiselect to allow the user to choose which JDs to run against
         selected_jds = st.multiselect(
             "Select Job Descriptions to Match Against",
             options=list(jd_options.keys()),
@@ -1525,7 +1550,7 @@ def batch_jd_match_tab():
     
     st.markdown("---")
 
-    # --- 2. Results Display (FIXED: Detailed Report) ---
+    # --- 2. Results Display (UPDATED TABLE FORMATTING) ---
     st.markdown("#### 2. Match Report")
     
     if st.session_state.get('candidate_results'):
@@ -1538,34 +1563,19 @@ def batch_jd_match_tab():
                 "Job Description (Ranked)": r.get('jd_title', 'N/A'),
                 "Role": r.get('job_role', 'N/A'),
                 "Job Type": r.get('job_type', 'N/A'),
-                "Overall Fit Score (1-10)": r.get('score_10', 0),
-                "Skills (%)": r.get('skills_percent', 0),
-                "Experience (%)": r.get('experience_percent', 0),
-                "Education (%)": r.get('education_percent', 0)
+                # Remove progress bar formatting, display as numbers/strings
+                "Overall Fit Score": f"{r.get('score_10', 0):.1f}/10",
+                "Skills Match": f"{r.get('skills_percent', 0)}%",
+                "Experience Match": f"{r.get('experience_percent', 0)}%",
+                "Education Match": f"{r.get('education_percent', 0)}%"
             }
             for i, r in enumerate(results)
         ]).set_index("Rank")
         
         st.dataframe(
             df, 
-            use_container_width=True,
-            column_config={
-                "Overall Fit Score (1-10)": st.column_config.ProgressColumn(
-                    "Overall Fit Score (1-10)",
-                    format="%.1f",
-                    min_value=0,
-                    max_value=10,
-                ),
-                "Skills (%)": st.column_config.ProgressColumn(
-                    "Skills (%)", format="%d%%", min_value=0, max_value=100
-                ),
-                 "Experience (%)": st.column_config.ProgressColumn(
-                    "Experience (%)", format="%d%%", min_value=0, max_value=100
-                ),
-                 "Education (%)": st.column_config.ProgressColumn(
-                    "Education (%)", format="%d%%", min_value=0, max_value=100
-                ),
-            }
+            use_container_width=True
+            # Removed column_config to stop using progress bars (colors)
         )
 
         st.markdown("##### Detailed Reports")
@@ -1583,7 +1593,7 @@ def batch_jd_match_tab():
                 
                 # Overall Fit Score
                 st.markdown(f"**Overall Fit Score:** {score_10}/10")
-                st.progress(score_10 / 10)
+                st.progress(score_10 / 10) # Keeping the progress bar display in the expander for visual interest
                 
                 # Section Match Analysis
                 st.markdown(f"--- Section Match Analysis --- **Skills Match:** {skills_percent}% **Experience Match:** {experience_percent}% **Education Match:** {education_percent}%")
