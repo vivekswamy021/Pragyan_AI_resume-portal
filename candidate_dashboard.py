@@ -1658,6 +1658,10 @@ def generate_cover_letter_llm(cv_data, jd_data, recipient_info):
     jd_skills = ', '.join([str(s) for s in jd_data.get('required_skills', [])[:5]]) # Top 5 required skills
     jd_qualifications = ', '.join([str(q) for q in jd_data.get('qualifications', [])[:3]]) # Top 3 qualifications
 
+    # Use defaults/placeholders as recipient inputs are now removed
+    recipient_name = recipient_info.get('recipient_name', 'Hiring Manager')
+    company_name = recipient_info.get('company_name', 'Hiring Team')
+
     prompt = f"""
     You are an expert career consultant. Write a professional and compelling cover letter for a job application.
     The letter must be highly personalized, directly matching the candidate's experience to the job requirements.
@@ -1674,10 +1678,10 @@ def generate_cover_letter_llm(cv_data, jd_data, recipient_info):
     - Role: {jd_title}
     - Required Skills: {jd_skills}
     - Key Qualifications: {jd_qualifications}
-    - Company Name: {recipient_info.get('company_name', 'Hiring Team')}
+    - Company Name: {company_name}
     
-    **Recipient Information (Use this for salutation):**
-    - Recipient Name: {recipient_info.get('recipient_name', 'Hiring Manager')}
+    **Recipient Information (Use this for salutation and address):**
+    - Recipient Name: {recipient_name}
     
     **Structure Requirements:**
     1.  **Date** (Current Date: {date.today().strftime('%B %d, %Y')})
@@ -1767,21 +1771,22 @@ def cover_letter_tab():
         
     st.markdown("---")
     
-    st.markdown("#### Recipient Details (Optional)")
-    col_recip, col_comp = st.columns(2)
-    with col_recip:
-        recipient_name = st.text_input(
-            "Recipient Name (e.g., Jane Doe, Hiring Manager)",
-            value="Hiring Manager",
-            key="cl_recipient_name"
-        )
-    with col_comp:
-        company_name = st.text_input(
-            "Target Company Name",
-            value=jd_keys_valid.get(selected_jd_key, "The Company"),
-            key="cl_company_name"
-        )
+    # RECIPIENT DETAILS REMOVED HERE
     
+    # Define placeholder recipient details using JD title to guess company/role
+    if selected_jd_key:
+        jd_title_guess = jd_keys_valid.get(selected_jd_key, "The Role")
+    else:
+        jd_title_guess = "The Role"
+
+    # Default Recipient Info
+    recipient_info = {
+        "recipient_name": "Hiring Manager",
+        "company_name": "The Company Hiring for " + jd_title_guess # A small guess based on JD title
+    }
+    
+    st.info(f"The Cover Letter will be addressed to the **{recipient_info['recipient_name']}** at **{recipient_info['company_name']}**.")
+
     st.markdown("---")
     
     generate_button = st.button(
@@ -1797,11 +1802,6 @@ def cover_letter_tab():
         cv_data = st.session_state.managed_cvs.get(selected_cv_key)
         jd_data = st.session_state.managed_jds.get(selected_jd_key)
         
-        recipient_info = {
-            "recipient_name": recipient_name.strip() or "Hiring Manager",
-            "company_name": company_name.strip() or "The Company"
-        }
-
         if not cv_data or not jd_data or isinstance(cv_data, str) or isinstance(jd_data, str):
             st.error("Error: Selected CV or JD data is corrupted or missing.")
             return
@@ -1860,9 +1860,6 @@ def filter_jd_tab():
     # --- Filter Inputs ---
     with st.form("jd_filter_form"):
         st.markdown("#### 1. Filter by Skills")
-        
-        # --- REMOVED: col_skills, col_count = st.columns([0.7, 0.3])
-        # --- REMOVED: st.number_input ("Min Matching Skills")
         
         filter_skills_input = st.text_input(
             "Enter key skills (comma-separated). JDs must contain at least one of these.",
