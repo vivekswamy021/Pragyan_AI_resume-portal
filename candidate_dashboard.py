@@ -669,7 +669,8 @@ def resume_parsing_tab():
     
     st.markdown("---")
 
-    process_button = st.button("✨ Parse and Structure CV", type="primary", use_container_width=True)
+    # FIX APPLIED HERE
+    process_button = st.button("✨ Parse and Load Uploaded File", type="primary", use_container_width=True)
 
     if process_button:
         extracted_text = ""
