@@ -202,15 +202,15 @@ def parse_jd_with_llm(text, jd_title="Job Description"):
 
     return parsed
     
-# --- CHATBOT UTILITY FUNCTION (FIXED) ---
+# --- CHATBOT UTILITY FUNCTION (JD PROMPT FIXED) ---
 
 @st.cache_data(show_spinner="Thinking...")
 def get_ai_response(context_text, user_question, context_type):
     """
     Generates a Q&A response based on the provided text context (CV or JD).
     
-    FIX: Strengthened system prompt to enforce strict adherence to context 
-    and prevent the LLM from hallucinating or using general knowledge.
+    FIX: Softened the JD system prompt to allow for reasonable synthesis 
+    from the document, rather than requiring the exact answer to be explicitly stated.
     
     :param context_text: The full text of the CV or JD.
     :param user_question: The question asked by the user.
@@ -224,8 +224,8 @@ def get_ai_response(context_text, user_question, context_type):
         system_prompt = "You are an expert HR assistant. Your task is to analyze the provided candidate's resume/CV content and answer the user's question accurately and concisely. **You must ONLY draw from the information explicitly present in the CV text.** If the information is not in the CV, you must state: 'The answer is not explicitly stated in the provided CV content.' Do not make assumptions, invent details, or use external knowledge."
         
     elif context_type == 'JD':
-        # Enhanced JD prompt: clearly state the purpose (recruiting) and the context constraint
-        system_prompt = "You are an expert recruiting specialist. Your task is to analyze the provided Job Description (JD) and answer the user's question accurately and concisely. **You must ONLY draw from the information explicitly present in the JD text.** If the information is not in the JD, you must state: 'The answer is not explicitly stated in the provided Job Description.' Focus only on requirements, responsibilities, and qualifications."
+        # --- FIXED PROMPT FOR JD CHATBOT ---
+        system_prompt = "You are an expert recruiting specialist. Your task is to analyze the provided Job Description (JD) and answer the user's question accurately and concisely. **Base your answer strictly on the JD text, but you may use reasonable inference to summarize or synthesize closely related points.** If the answer is genuinely unknowable or not mentioned, state: 'The necessary information is not available in the provided Job Description.' Focus only on requirements, responsibilities, and qualifications."
         
     else:
         return "Error: Invalid context type for chatbot."
