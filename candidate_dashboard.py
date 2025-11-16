@@ -1404,7 +1404,7 @@ def jd_management_tab():
                 
                 if success:
                     st.success(message)
-                    # --- FIX: Rerun to refresh the saved JDs list ---
+                    # --- FIX APPLIED: Rerun to refresh the saved JDs list ---
                     st.rerun() 
                 else:
                     st.error(message)
@@ -1778,8 +1778,7 @@ def cover_letter_tab():
             key="cl_cv_select"
         )
     with col_jd:
-        selected_jd_key = st.selectbox
-(
+        selected_jd_key = st.selectbox(
             "Select Target Job Description",
             options=list(jd_keys_valid.keys()),
             format_func=lambda k: jd_keys_valid[k],
