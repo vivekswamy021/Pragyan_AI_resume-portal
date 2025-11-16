@@ -1248,7 +1248,7 @@ def tab_cv_management():
     cv_form_content()
 
 # -------------------------
-# JD MANAGEMENT TAB CONTENT
+# JD MANAGEMENT TAB CONTENT (FIXED: Upload file logic wrapped in st.form)
 # -------------------------
 
 def process_jd_file(file, jd_type):
@@ -1355,31 +1355,38 @@ def jd_management_tab():
     if jd_method == "Upload File":
         st.markdown("##### Upload JD File(s)")
         
-        uploaded_jds = st.file_uploader(
-            "Drag and drop file(s) here",
-            type=['pdf', 'txt', 'docx'],
-            accept_multiple_files=(jd_type == "Multiple JD"),
-            key="jd_uploader"
-        )
-        st.caption("Limit 200MB per file • PDF, TXT, DOCX")
-        
-        if st.button("Add JD(s)", type="primary", use_container_width=True, key="upload_jd_button"):
-            if uploaded_jds:
-                files_to_process = uploaded_jds if isinstance(uploaded_jds, list) else [uploaded_jds]
-                
-                with st.spinner(f"Processing {len(files_to_process)} JD file(s)..."):
-                    results = [process_jd_file(f, jd_type) for f in files_to_process]
-                
-                success_count = sum(r[0] for r in results)
-                st.success(f"✅ Finished processing: {success_count} success(es).")
-                for success, message in results:
-                    if success:
-                        st.text(message)
-                    else:
-                        st.error(message)
+        # --- FIX APPLIED: Wrap uploader and button in st.form ---
+        with st.form("jd_upload_form"):
+            uploaded_jds = st.file_uploader(
+                "Drag and drop file(s) here",
+                type=['pdf', 'txt', 'docx'],
+                accept_multiple_files=(jd_type == "Multiple JD"),
+                key="jd_uploader_in_form" # Use a new key for the uploader inside the form
+            )
+            st.caption("Limit 200MB per file • PDF, TXT, DOCX")
+            
+            # Use st.form_submit_button to process the uploaded files
+            upload_button = st.form_submit_button("Add JD(s)", type="primary", use_container_width=True, key="upload_jd_button")
 
-            else:
-                st.warning("Please upload at least one JD file.")
+            if upload_button:
+                if uploaded_jds:
+                    files_to_process = uploaded_jds if isinstance(uploaded_jds, list) else [uploaded_jds]
+                    
+                    with st.spinner(f"Processing {len(files_to_process)} JD file(s)..."):
+                        results = [process_jd_file(f, jd_type) for f in files_to_process]
+                    
+                    success_count = sum(r[0] for r in results)
+                    st.success(f"✅ Finished processing: {success_count} success(es).")
+                    for success, message in results:
+                        if success:
+                            st.text(message)
+                        else:
+                            st.error(message)
+                    # Force a re-run to refresh the "Saved Job Descriptions" list
+                    st.rerun() 
+                else:
+                    st.warning("Please upload at least one JD file.")
+        # --- END FIX ---
         
     elif jd_method == "Paste Text":
         st.markdown("##### Paste JD Text")
@@ -1397,6 +1404,7 @@ def jd_management_tab():
                 
                 if success:
                     st.success(message)
+                    st.rerun() # Re-run to update the saved JDs section
                 else:
                     st.error(message)
             else:
