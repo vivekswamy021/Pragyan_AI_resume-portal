@@ -348,7 +348,7 @@ def mock_jd_match(cv_data, jd_data):
         top_missing = list(missing_skills)[:3]
         skills_gaps.append(f"The resume is missing key required skills like **{', '.join([s.title() for s in top_missing])}**.")
         if len(missing_skills) > 3:
-             skills_gaps[-1] += f" (and {len(missing_skills) - 3} other required skills)."
+             skills_gaps[-1] += f" (and {len(missing_skills) - 3} other required skills)."}
              
     # Placeholder for soft skills/responsibilities gaps (mocked)
     if "communication" in jd_skills and "communication" not in cv_skills:
@@ -461,7 +461,7 @@ def format_cv_to_html(cv_data, cv_name):
         return f"""
         <div class="entry">
             <p><strong>{cert.get('name', 'N/A')}</strong> - {cert.get('title', 'N/A')}</p>
-            <p><em>Issued by:</em> {cert.get('given_by', 'N/A')}</p>
+            <p><em>Issued by:</em> {cert.get('given_by', 'N/A')}</li>
             <p><em>Date:</em> {cert.get('date_received', 'N/A')}</p>
         </div>
         """
@@ -1748,52 +1748,50 @@ def cover_letter_tab():
         st.error("⚠️ GROQ_API_KEY is missing. Cover Letter generation is disabled.")
         return
 
-    # --- FILTER CVs: ONLY show CVs from the Resume Parsing tab ('Parsing_Upload') ---
-    
-    cv_keys_all_items = st.session_state.managed_cvs.items()
-    
+    cv_data_items = st.session_state.managed_cvs.items()
+    # Filter for CVs created via the Resume Parsing tab ('Parsing_Upload')
     parsing_cv_items = [
-        (k, v) for k, v in cv_keys_all_items
+        (k, v) for k, v in cv_data_items 
         if isinstance(v, dict) and v.get('source_type') == 'Parsing_Upload'
     ]
+
+    selected_cv_key = None
+    cv_data = None
     
-    cv_keys_valid = {k: v.get('name', k) for k, v in parsing_cv_items}
-    # ---------------------------------------------------------------------------------
-
-    jd_keys_valid = {k: v.get('title', k) for k, v in st.session_state.managed_jds.items() if isinstance(v, dict)}
-
-    if not cv_keys_valid or not jd_keys_valid:
-        if not cv_keys_valid:
-            st.warning("Please upload or paste a CV in the **'Resume Parsing'** tab to use this feature.")
-        if not jd_keys_valid:
-            st.warning("Please add JDs in the **'JD Management'** tab to use this feature.")
+    if parsing_cv_items:
+        # Select the latest CV from the Resume Parsing tab
+        selected_cv_key, cv_data = parsing_cv_items[-1]
+    
+    # --- CV Selection Section (Modified to remove dropdown) ---
+    st.markdown("#### 1. Selected Candidate CV (from Resume Parsing)")
+    
+    if not selected_cv_key:
+        st.warning("⚠️ **No CV uploaded/pasted in the 'Resume Parsing' tab.** Please upload a CV there first.")
         return
+    else:
+        st.info(f"Automatically selected CV: **{cv_data.get('name', 'N/A')}**")
         
     st.markdown("---")
-    
-    col_cv, col_jd = st.columns(2)
-    with col_cv:
-        selected_cv_key = st.selectbox(
-            "Select Candidate CV (Source: Resume Parsing Tab Only)",
-            options=list(cv_keys_valid.keys()),
-            format_func=lambda k: cv_keys_valid[k],
-            key="cl_cv_select"
-        )
-    with col_jd:
-        selected_jd_key = st.selectbox(
-            "Select Target Job Description",
-            options=list(jd_keys_valid.keys()),
-            format_func=lambda k: jd_keys_valid[k],
-            key="cl_jd_select"
-        )
+        
+    # --- JD Selection Section ---
+    jd_keys_valid = {k: v.get('title', k) for k, v in st.session_state.managed_jds.items() if isinstance(v, dict)}
+
+    if not jd_keys_valid:
+        st.warning("Please ensure you have at least **one valid JD** saved in the 'JD Management' tab.")
+        return
+
+    st.markdown("#### 2. Select Target Job Description")
+    selected_jd_key = st.selectbox(
+        "Select Job Description",
+        options=list(jd_keys_valid.keys()),
+        format_func=lambda k: jd_keys_valid[k],
+        key="cl_jd_select"
+    )
         
     st.markdown("---")
     
     # Define placeholder recipient details using JD title to guess company/role
-    if selected_jd_key:
-        jd_title_guess = jd_keys_valid.get(selected_jd_key, "The Role")
-    else:
-        jd_title_guess = "The Role"
+    jd_title_guess = jd_keys_valid.get(selected_jd_key, "The Role")
 
     # Default Recipient Info
     recipient_info = {
@@ -1801,6 +1799,7 @@ def cover_letter_tab():
         "company_name": "The Company Hiring for " + jd_title_guess # A small guess based on JD title
     }
     
+    st.markdown("#### 3. Recipient Information")
     st.info(f"The Cover Letter will be addressed to the **{recipient_info['recipient_name']}** at **{recipient_info['company_name']}**.")
 
     st.markdown("---")
@@ -1815,7 +1814,7 @@ def cover_letter_tab():
     st.markdown("---")
 
     if generate_button:
-        cv_data = st.session_state.managed_cvs.get(selected_cv_key)
+        # cv_data is already set from the auto-selection logic
         jd_data = st.session_state.managed_jds.get(selected_jd_key)
         
         if not cv_data or not jd_data or isinstance(cv_data, str) or isinstance(jd_data, str):
@@ -1845,7 +1844,10 @@ def cover_letter_tab():
         st.markdown("---")
         
         # Download options
-        html_output = format_cl_to_html(cl_text, st.session_state.managed_cvs.get(selected_cv_key, {}), st.session_state.managed_jds.get(selected_jd_key, {}))
+        cv_dl_data = st.session_state.managed_cvs.get(selected_cv_key, {})
+        jd_dl_data = st.session_state.managed_jds.get(selected_jd_key, {})
+        
+        html_output = format_cl_to_html(cl_text, cv_dl_data, jd_dl_data)
         
         col_dl_html, col_dl_txt = st.columns(2)
         with col_dl_html:
