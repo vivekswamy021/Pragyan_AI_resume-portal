@@ -226,8 +226,6 @@ def extract_content(file_type, file_content_bytes, file_name):
 def parse_resume_with_llm(text):
     """
     Sends resume text to the LLM for structured information extraction.
-    
-    FIX: Ensures 'error' is explicitly set to None on successful return path.
     """
     
     def get_fallback_name():
@@ -249,7 +247,7 @@ def parse_resume_with_llm(text):
             if not parsed_data.get('name'):
                  parsed_data['name'] = get_fallback_name()
                  
-            parsed_data['error'] = None # <--- CRITICAL FIX: Explicitly set to None
+            parsed_data['error'] = None 
             
             return parsed_data
         
@@ -267,7 +265,7 @@ def parse_resume_with_llm(text):
             if not parsed_data.get('name'):
                  parsed_data['name'] = get_fallback_name()
             
-            parsed_data['error'] = None # <--- CRITICAL FIX: Explicitly set to None
+            parsed_data['error'] = None 
             return parsed_data
             
         except Exception as e:
@@ -323,7 +321,7 @@ def parse_resume_with_llm(text):
         if not parsed.get('name'):
             parsed['name'] = get_fallback_name()
             
-        parsed['error'] = None # <--- CRITICAL FIX: Explicitly set to None
+        parsed['error'] = None 
         return parsed
 
     except json.JSONDecodeError as e:
@@ -568,7 +566,7 @@ def evaluate_jd_fit(job_description, parsed_json):
     # Use the client object, which can be the real Groq client or the MockGroqClient
     global client, GROQ_MODEL, GROQ_API_KEY
     
-    # CHECK: The fix is here: ensures 'error' is explicitly None
+    # Check for resume parsing error
     if parsed_json.get('error') is not None: 
          # This message is now explicitly caught in the match_batch_tab to set the score to 'Cannot evaluate'
          return f"Cannot evaluate due to resume parsing errors: {parsed_json['error']}"
@@ -639,7 +637,7 @@ def evaluate_jd_fit(job_description, parsed_json):
 # --- Tab Content Functions ---
     
 def resume_parsing_tab():
-    # --- TAB 1 (Now tab_parsing): Resume Parsing (MODIFIED: Added Paste Your CV option) ---
+    # --- TAB 1 (Now tab_parsing): Resume Parsing ---
     st.header("📄 Resume Upload and Parsing")
     
     # 1. Input Method Selection
@@ -651,7 +649,7 @@ def resume_parsing_tab():
     
     st.markdown("---")
 
-    # --- A. Upload File Method (UPDATED FILE TYPES HERE) ---
+    # --- A. Upload File Method ---
     if input_method == "Upload File":
         st.markdown("### 1. Upload Resume File") 
         
@@ -717,7 +715,7 @@ def resume_parsing_tab():
         else:
             st.info("No resume file is currently uploaded. Please upload a file above.")
 
-    # --- B. Paste Text Method (NEW) ---
+    # --- B. Paste Text Method ---
     else: # input_method == "Paste Text"
         st.markdown("### 1. Paste Your CV Text")
         
@@ -901,7 +899,6 @@ def jd_batch_match_tab():
     st.markdown("Compare your current resume against all saved job descriptions.")
 
     # Determine if a resume/CV is ready
-    # CRITICAL FIX: Ensure 'error' key is explicitly None
     is_resume_parsed = (
         st.session_state.get('parsed') is not None and
         st.session_state.parsed.get('name') is not None and
@@ -978,11 +975,10 @@ def jd_batch_match_tab():
                         # Call the LLM-dependent evaluation function
                         fit_output = evaluate_jd_fit(jd_content, parsed_json) 
                         
-                        # -----------------------------------------------------------
                         # --- FIX: ROBUST REGEX EXTRACTION FOR SCORE AND PERCENTAGES ---
-                        # -----------------------------------------------------------
                         
                         # 1. Overall Score Fix: Use non-greedy match and be flexible with spaces/brackets
+                        # Note: We include the `[?]` to handle cases where the model might output e.g., [8]/10
                         overall_score_match = re.search(r'Overall Fit Score:\s*\[?\s*(\d+)\s*\]?\s*/10', fit_output, re.IGNORECASE)
                         
                         # 2. Section Analysis Block
@@ -1008,18 +1004,17 @@ def jd_batch_match_tab():
                         overall_score = overall_score_match.group(1) if overall_score_match else 'N/A'
                         
                         # 4. Check for API/Mock/Parsing errors
-                        if "AI Evaluation Error" in fit_output:
-                            overall_score = "Error (API)"
+                        if "AI Evaluation Error" in fit_output or "Error parsing LLM analysis" in fit_output:
+                            overall_score = "Error"
                         elif "Cannot evaluate" in fit_output:
-                            overall_score = "Error (Parse)"
+                            overall_score = "Error"
                             
-                        # -----------------------------------------------------------
                         # --- END FIX ---
-                        # -----------------------------------------------------------
 
                         results_with_score.append({
                             "jd_name": jd_name,
                             "overall_score": overall_score,
+                            # Critical for sorting: Safely convert to int, use -1 if N/A or Error
                             "numeric_score": int(overall_score) if overall_score.isdigit() else -1, 
                             "skills_percent": skills_percent,
                             "experience_percent": experience_percent, 
@@ -1030,7 +1025,7 @@ def jd_batch_match_tab():
                         # This catches parsing errors if the LLM output is malformed even if the API call succeeded.
                         results_with_score.append({
                             "jd_name": jd_name,
-                            "overall_score": "Error (Extract)",
+                            "overall_score": "Error",
                             "numeric_score": -1, 
                             "skills_percent": "Error",
                             "experience_percent": "Error", 
@@ -1038,7 +1033,8 @@ def jd_batch_match_tab():
                             "full_analysis": f"Error parsing LLM analysis for {jd_name}: {e}\nFull LLM Output:\n---\n{fit_output}\n---"
                         })
                         
-                # --- NEW RANKING LOGIC (Handles ties correctly) ---
+                # --- NEW RANKING AND SORTING LOGIC ---
+                # Sort primarily by the robust numeric score (highest first)
                 results_with_score.sort(key=lambda x: x['numeric_score'], reverse=True)
                 
                 current_rank = 1
@@ -1059,13 +1055,13 @@ def jd_batch_match_tab():
                          del item['numeric_score'] 
                     
                 st.session_state.candidate_match_results = results_with_score
-                # --- END NEW RANKING LOGIC ---
+                # --- END NEW RANKING AND SORTING LOGIC ---
                 
                 st.success("Batch analysis complete! See results below.")
                 st.rerun() 
 
 
-    # 3. Display Results (UPDATED TO INCLUDE RANK)
+    # 3. Display Results (The section you wanted to remove, but is crucial for the tab)
     if st.session_state.get('candidate_match_results'):
         st.markdown("#### Match Results for Your Resume")
         results_df = st.session_state.candidate_match_results
@@ -1079,8 +1075,8 @@ def jd_batch_match_tab():
             
             # Clean up score display based on error type
             overall_score_display = item["overall_score"]
-            if overall_score_display.startswith("Error"):
-                overall_score_display = "Error" 
+            if overall_score_display == "Error":
+                overall_score_display = "Cannot evaluate" 
 
             display_data.append({
                 "Rank": item.get("rank", "N/A"),
@@ -1100,7 +1096,7 @@ def jd_batch_match_tab():
             rank_display = f"Rank {item.get('rank', 'N/A')} | "
             
             header_score = item['overall_score']
-            if header_score.startswith("Error"):
+            if header_score == "Error":
                  header_score = "Evaluation Error"
                  
             # Ensure the full analysis is displayed with markdown formatting
@@ -1108,258 +1104,6 @@ def jd_batch_match_tab():
             with st.expander(header_text):
                 # Use st.code to display the LLM output with good formatting
                 st.code(item['full_analysis'], language='markdown')
-
-
-# --- New Filter JD Tab Function ---
-
-def filter_jd_tab_content():
-    st.header("🔍 Filter Job Descriptions by Criteria")
-    st.markdown("Use the filters below to narrow down your saved Job Descriptions.")
-
-    if not st.session_state.candidate_jd_list:
-        st.info("No Job Descriptions are currently loaded. Please add JDs in the 'JD Management' tab.")
-        if 'filtered_jds_display' not in st.session_state:
-            st.session_state.filtered_jds_display = []
-        return
-    
-    # --- Skill and Role Extraction ---
-    global DEFAULT_ROLES, DEFAULT_JOB_TYPES, STARTER_KEYWORDS
-    
-    unique_roles = sorted(list(set(
-        [item.get('role', 'General Analyst') for item in st.session_state.candidate_jd_list] + DEFAULT_ROLES
-    )))
-    unique_job_types = sorted(list(set(
-        [item.get('job_type', 'Full-time') for item in st.session_state.candidate_jd_list] + DEFAULT_JOB_TYPES
-    )))
-    
-    all_unique_skills = set(STARTER_KEYWORDS)
-    for jd in st.session_state.candidate_jd_list:
-        valid_skills = [
-            skill.strip() for skill in jd.get('key_skills', []) 
-            if isinstance(skill, str) and skill.strip()
-        ]
-        all_unique_skills.update(valid_skills)
-    
-    unique_skills_list = sorted(list(all_unique_skills))
-    
-    if not unique_skills_list:
-        unique_skills_list = ["No skills extracted from current JDs"]
-
-    all_jd_data = st.session_state.candidate_jd_list
-    # --- End Extraction ---
-
-    # --- Start Filter Form ---
-    with st.form(key="jd_filter_form"):
-        st.markdown("### Select Filters")
-        
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            selected_skills = st.multiselect(
-                "Skills Keywords (Select multiple)",
-                options=unique_skills_list,
-                default=st.session_state.get('last_selected_skills', []),
-                key="candidate_filter_skills_multiselect", 
-                help="Select one or more skills. JDs containing ANY of the selected skills will be shown."
-            )
-            
-        with col2:
-            selected_job_type = st.selectbox(
-                "Job Type",
-                options=["All Job Types"] + unique_job_types,
-                index=0, 
-                key="filter_job_type_select"
-            )
-            
-        with col3:
-            selected_role = st.selectbox(
-                "Role Title",
-                options=["All Roles"] + unique_roles,
-                index=0, 
-                key="filter_role_select"
-            )
-
-        apply_filters_button = st.form_submit_button("✅ Apply Filters", type="primary", use_container_width=True)
-
-    # --- Start Filtering Logic ---
-    if apply_filters_button:
-        
-        st.session_state.last_selected_skills = selected_skills
-
-        filtered_jds = []
-        selected_skills_lower = [k.strip().lower() for k in selected_skills]
-        
-        for jd in all_jd_data:
-            jd_role = jd.get('role', 'General Analyst')
-            jd_job_type = jd.get('job_type', 'Full-time')
-            jd_key_skills = [
-                s.lower() for s in jd.get('key_skills', []) 
-                if isinstance(s, str) and s.strip()
-            ]
-            
-            # 1. Role Filter
-            role_match = (selected_role == "All Roles") or (selected_role == jd_role)
-            
-            # 2. Job Type Filter
-            job_type_match = (selected_job_type == "All Job Types") or (selected_job_type == jd_job_type)
-            
-            # 3. Skills Filter
-            skill_match = True
-            if selected_skills_lower:
-                if not any(k in jd_key_skills for k in selected_skills_lower):
-                    skill_match = False
-            
-            if role_match and job_type_match and skill_match:
-                filtered_jds.append(jd)
-                
-        st.session_state.filtered_jds_display = filtered_jds
-        st.success(f"Filter applied! Found {len(filtered_jds)} matching Job Descriptions.")
-
-    # --- Display Results ---
-    st.markdown("---")
-    
-    if 'filtered_jds_display' not in st.session_state:
-        st.session_state.filtered_jds_display = []
-        
-    filtered_jds = st.session_state.filtered_jds_display
-    
-    st.subheader(f"Matching Job Descriptions ({len(filtered_jds)} found)")
-    
-    if filtered_jds:
-        display_data = []
-        for jd in filtered_jds:
-            display_data.append({
-                "Job Description Title": jd['name'].replace("--- Simulated JD for: ", ""),
-                "Role": jd.get('role', 'N/A'),
-                "Job Type": jd.get('job_type', 'N/A'),
-                "Key Skills": ", ".join(jd.get('key_skills', ['N/A'])[:5]) + "...",
-            })
-            
-        st.dataframe(display_data, use_container_width=True)
-
-        st.markdown("##### Detailed View")
-        for idx, jd in enumerate(filtered_jds, 1):
-            with st.expander(f"JD {idx}: {jd['name'].replace('--- Simulated JD for: ', '')} - ({jd.get('role', 'N/A')})"):
-                st.markdown(f"**Job Type:** {jd.get('job_type', 'N/A')}")
-                st.markdown(f"**Extracted Skills:** {', '.join(jd.get('key_skills', ['N/A']))}")
-                st.markdown("---")
-                st.text(jd['content'])
-    elif st.session_state.candidate_jd_list and apply_filters_button:
-        st.info("No Job Descriptions match the selected criteria. Try broadening your filter selections.")
-    elif st.session_state.candidate_jd_list and not apply_filters_button:
-        st.info("Use the filters above and click **'Apply Filters'** to view matching Job Descriptions.")
-
-
-# --- New Parsed Data Tab (To house the removed content for testing) ---
-
-def parsed_data_tab():
-    st.header("✨ Parsed Resume Data View")
-    st.markdown("This tab displays the loaded candidate data and provides download options.")
-    st.markdown("---")
-
-    # CRITICAL FIX: Ensure 'error' key is explicitly None for a 'valid' state
-    is_data_loaded_and_valid = (
-        st.session_state.get('parsed', {}).get('name') is not None and 
-        st.session_state.get('parsed', {}).get('error') is None
-    )
-
-    if is_data_loaded_and_valid:
-        
-        candidate_name = st.session_state.parsed['name']
-        
-        # Determine the source display name
-        source_key = st.session_state.get('current_parsing_source_name', 'Unknown Source')
-        if source_key == "Pasted_Text":
-            source_display = "Pasted CV Data"
-        else:
-            source_display = source_key.replace('_', ' ').replace('-', ' ') 
-
-        # Calculate filenames and URIs once
-        base_filename = f"{candidate_name.replace(' ', '_')}_Parsed_Resume"
-        parsed_json_data = json.dumps(st.session_state.parsed, indent=4)
-        parsed_markdown_data = st.session_state.full_text
-        
-        json_filename = f"{base_filename}.json"
-        md_filename = f"{base_filename}.md"
-        html_filename = f"{base_filename}.html"
-        
-        json_data_uri = get_download_link(parsed_json_data, json_filename, 'json')
-        md_data_uri = get_download_link(parsed_markdown_data, md_filename, 'markdown')
-        html_data_uri = get_download_link(parsed_markdown_data, html_filename, 'html')
-        
-        
-        tab_markdown, tab_json, tab_download = st.tabs([
-            "📄 Markdown View", 
-            "💾 JSON View", 
-            "⬇️ PDF/HTML Download"
-        ])
-
-        # --- Markdown View Tab ---
-        with tab_markdown:
-            st.markdown(f"**Candidate:** **{candidate_name}**")
-            st.caption(f"Source: {source_display}")
-            st.markdown("---")
-            st.markdown("### Resume Content in Markdown Format")
-            st.markdown(st.session_state.full_text)
-            
-            if st.session_state.excel_data:
-                 st.markdown("### Extracted Spreadsheet Data (if applicable)")
-                 st.json(st.session_state.excel_data)
-                 
-            st.markdown("---")
-            st.markdown("##### Download Markdown Data")
-            render_download_button(
-                md_data_uri, 
-                md_filename, 
-                f"⬇️ Download Markdown (.md)", 
-                'markdown'
-            )
-
-
-        # --- JSON View Tab ---
-        with tab_json:
-            st.markdown(f"**Candidate:** **{candidate_name}**")
-            st.caption(f"Source: {source_display}")
-            st.markdown("---")
-            st.markdown("### Structured Data in JSON Format")
-            st.json(st.session_state.parsed)
-
-            st.markdown("---")
-            st.markdown("##### Download JSON Data")
-            render_download_button(
-                json_data_uri, 
-                json_filename, 
-                f"💾 Download JSON (.json)", 
-                'json'
-            )
-
-        # --- Download Tab ---
-        with tab_download:
-            
-            st.markdown("### Download Viewable Document")
-            st.info("This download provides the data in an HTML file that can be easily viewed or printed/saved as a PDF.")
-            
-            col_html = st.columns(1)[0]
-
-            with col_html:
-                st.markdown(f"**{html_filename.replace('.html', '.pdf/html')}**", help="Viewable document format.")
-                render_download_button(
-                    html_data_uri, 
-                    html_filename, 
-                    f"📄 Download HTML (PDF Sim.)", 
-                    'html'
-                )
-                
-            st.markdown("---")
-            st.info("For structured data (JSON) or raw text (Markdown), please check their respective viewing tabs.")
-
-
-    else:
-        st.warning(f"**Status:** ❌ **No Valid Resume Data Loaded**")
-        # Display the actual error message if one exists
-        if st.session_state.get('parsed', {}).get('error') is not None:
-             st.error(f"Last Parsing Error: {st.session_state.parsed['error']}")
-        st.info("Please successfully parse a resume in the **Resume Parsing** tab.")
 
 
 # -------------------------
@@ -1394,25 +1138,19 @@ def candidate_dashboard():
     if 'last_selected_skills' not in st.session_state: st.session_state.last_selected_skills = []
     
 
-    # --- Main Content with Tabs ---
-    tab_parsing, tab_data_view, tab_jd, tab_batch_match, tab_filter_jd = st.tabs(
-        ["📄 Resume Parsing", "✨ Parsed Data View", "📚 JD Management", "🎯 Batch JD Match", "🔍 Filter JD"]
+    # --- Main Content with Tabs (REMOVED FILTER JD AND PARSED DATA VIEW TABS) ---
+    tab_parsing, tab_jd, tab_batch_match = st.tabs(
+        ["📄 Resume Parsing", "📚 JD Management", "🎯 Batch JD Match"]
     )
     
     with tab_parsing:
         resume_parsing_tab()
-        
-    with tab_data_view:
-        parsed_data_tab()
         
     with tab_jd:
         jd_management_tab_candidate()
         
     with tab_batch_match:
         jd_batch_match_tab()
-        
-    with tab_filter_jd:
-        filter_jd_tab_content()
 
 
 # -------------------------
