@@ -168,8 +168,7 @@ def parse_resume_with_llm(text):
 
     # Helper function to get a fallback name
     def get_fallback_name():
-        # FOR THIS SPECIFIC REQUEST, WE FORCE THE MOCK NAME TO "Vivek Swamy" 
-        # to ensure the download links are correct during testing/mocking.
+        # FOR CONSISTENT TESTING/MOCKING.
         return "Vivek Swamy" 
     
     candidate_name = get_fallback_name()
@@ -265,9 +264,11 @@ def parse_and_store_resume(content_source, file_name_key, source_type):
         st.session_state.current_parsing_source_name = file_name 
 
     if extracted_text.startswith("[Error"):
+        # Explicitly return an error state
         return {"error": extracted_text, "full_text": extracted_text, "excel_data": None, "name": file_name}
     
     # 2. Call LLM Parser
+    # The LLM parser handles the mock data generation if client is MockGroqClient
     parsed_data = parse_resume_with_llm(extracted_text)
     
     # 3. Handle LLM Parsing Error
@@ -298,10 +299,6 @@ def parse_and_store_resume(content_source, file_name_key, source_type):
 def get_download_link(data, filename, file_format):
     """
     Generates a base64 encoded download link for the given data and format.
-    
-    This function returns the href data string, which is necessary to inject into 
-    a button's onClick or to use as the download href directly in Streamlit 
-    with st.markdown(unsafe_allow_html=True).
     """
     mime_type = "application/octet-stream"
     
@@ -533,6 +530,7 @@ def resume_parsing_tab():
         st.markdown("### 2. Parse Uploaded File")
         
         if file_to_parse:
+            # Check if the currently uploaded file is already parsed and valid
             is_already_parsed = (
                 st.session_state.get('current_parsing_source_name') == file_to_parse.name and 
                 st.session_state.get('parsed', {}).get('name') is not None and
@@ -581,6 +579,7 @@ def resume_parsing_tab():
         st.markdown("### 2. Parse Pasted Text")
         
         if pasted_text.strip():
+            # Check if the current pasted text is already parsed and valid
             is_already_parsed = (
                 st.session_state.get('current_parsing_source_name') == "Pasted_Text" and 
                 st.session_state.get('pasted_cv_text_input', '') == pasted_text and
@@ -654,7 +653,12 @@ def resume_parsing_tab():
             st.caption(f"Source: {st.session_state.get('current_parsing_source_name', 'Unknown Source').replace('_', ' ').replace('Pasted Text', 'Pasted CV Data')}")
             st.markdown("---")
             st.markdown("### Resume Content in Markdown Format")
-            st.markdown(st.session_state.full_text)
+            
+            # --- Display Markdown Content ---
+            if st.session_state.full_text:
+                st.markdown(st.session_state.full_text)
+            else:
+                 st.info("Markdown content is empty. Check parsing output.")
             
             if st.session_state.excel_data:
                  st.markdown("### Extracted Spreadsheet Data (if applicable)")
@@ -677,7 +681,12 @@ def resume_parsing_tab():
             st.caption(f"Source: {st.session_state.get('current_parsing_source_name', 'Unknown Source').replace('_', ' ').replace('Pasted Text', 'Pasted CV Data')}")
             st.markdown("---")
             st.markdown("### Structured Data in JSON Format")
-            st.json(st.session_state.parsed)
+            
+            # --- Display JSON Content ---
+            if st.session_state.parsed:
+                st.json(st.session_state.parsed)
+            else:
+                st.info("Parsed JSON data is empty. Check parsing output.")
 
             st.markdown("---")
             st.markdown("##### Download JSON Data")
