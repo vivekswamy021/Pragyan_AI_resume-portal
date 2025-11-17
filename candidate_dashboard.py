@@ -383,14 +383,15 @@ def extract_jd_metadata(jd_text):
     role_match = re.search(r'(?:Role|Position|Title)[:\s]+([\w\s/-]+)', jd_text, re.IGNORECASE)
     role = role_match.group(1).strip() if role_match else "Software Engineer (Mock)"
     
-    skills_match = re.findall(r'(Python|Java|SQL|AWS|Docker|Kubernetes|React|Streamlit)', jd_text, re.IGNORECASE)
+    # Extract Skills from JD content
+    skills_match = re.findall(r'(Python|Java|SQL|AWS|Docker|Kubernetes|React|Streamlit|Cloud|Data)', jd_text, re.IGNORECASE)
     
     job_type_match = re.search(r'(Full-time|Part-time|Contract|Remote)', jd_text, re.IGNORECASE)
     job_type = job_type_match.group(1) if job_type_match else "Full-time (Mock)"
     
     return {
         "role": role, 
-        "key_skills": list(set([s.lower() for s in skills_match][:5])), # Limit to 5 unique skills
+        "key_skills": list(set([s.lower() for s in skills_match])), # Keep all unique skills found
         "job_type": job_type
     }
 
@@ -400,8 +401,25 @@ def extract_jd_from_linkedin_url(url):
         return f"[Error] Invalid LinkedIn Job URL: {url}"
 
     # Mock content based on URL structure
-    role = "Data Scientist" if "data" in url.lower() else "Cloud Engineer"
+    url_lower = url.lower()
     
+    if "data-scientist" in url_lower:
+        role = "Data Scientist"
+        skills = ["Python", "SQL", "ML", "Data Analysis"]
+        focus = "machine learning and statistical modeling"
+        
+    elif "cloud-engineer" in url_lower or "aws" in url_lower:
+        role = "Cloud Engineer"
+        skills = ["AWS", "Docker", "Kubernetes", "Cloud Services"]
+        focus = "infrastructure as code and cloud deployment"
+        
+    else:
+        role = "Software Engineer"
+        skills = ["Java", "API", "SQL", "Streamlit"]
+        focus = "full-stack application development"
+    
+    skills_str = ", ".join(skills)
+
     return f"""
     --- Simulated JD for: {role} ---
     
@@ -409,64 +427,88 @@ def extract_jd_from_linkedin_url(url):
     Location: Remote
     
     Job Summary:
-    We are seeking a highly skilled {role} to join our team. The ideal candidate will have expertise in Python, SQL, and AWS. Must be able to work in a fast-paced environment and deliver solutions quickly. This is a Full-time position.
+    We are seeking a highly skilled **{role}** to join our team. The ideal candidate will have expertise in {skills_str}. Must be focused on **{focus}**. This is a Full-time position.
     
     Responsibilities:
-    * Develop and maintain data pipelines using **Python** and **SQL**.
-    * Manage and deploy applications on **AWS** and **Docker**.
+    * Develop and maintain systems using **{skills[0]}** and **{skills[1]}**.
+    * Manage and deploy applications on **{skills[2]}**.
     * Collaborate with cross-functional teams.
     
     Qualifications:
     * 3+ years of experience.
-    * Strong proficiency in **Python** and analytical tools.
-    * Experience with cloud platforms (e.g., **AWS**).
+    * Strong proficiency in **{skills[0]}** and analytical tools.
+    * Experience with cloud platforms (e.g., AWS).
     ---
     """
     
+# --- FIX APPLIED HERE: Logic updated to use resume skills for dynamic scoring ---
 def evaluate_jd_fit(jd_content, parsed_json):
     """
-    Mocks the LLM evaluation of resume fit against a JD.
+    Mocks the LLM evaluation of resume fit against a JD. 
+    The logic now dynamically scores based on a few key overlaps.
     """
     
-    # Mocking different scores based on JD content for demonstration
-    jd_name = jd_content.splitlines()[1].strip().replace("--- Simulated JD for: ", "")
+    # Get candidate skills (all lowercase for easy matching)
+    candidate_skills = [s.lower() for s in parsed_json.get('skills', []) if isinstance(s, str)]
     
-    if "Data Scientist" in jd_name:
-        score = 8
-        skills = 90
-        exp = 85
-        edu = 80
-    elif "Cloud Engineer" in jd_name:
-        score = 6
-        skills = 70
-        exp = 65
-        edu = 75
+    # Analyze JD content to identify required skills (using the metadata function)
+    jd_metadata = extract_jd_metadata(jd_content)
+    required_skills = jd_metadata.get('key_skills', [])
+    
+    # Determine overlap
+    common_skills = set(required_skills).intersection(set(candidate_skills))
+    num_common_skills = len(common_skills)
+    
+    # Base score
+    base_score = 5 # Start neutral
+    
+    # Score adjustment based on overlap (Max +4 adjustment)
+    if num_common_skills >= 4:
+        score_adj = 4
+        skills_percent = 95
+        strengths = "Excellent skill match, covering all major requirements like Python, SQL, and AWS."
+        weakness = "Minor gap in advanced Docker/Kubernetes."
+    elif num_common_skills >= 2:
+        score_adj = 2
+        skills_percent = 80
+        strengths = f"Good foundational skill match, specifically in {', '.join(list(common_skills)[:2])}."
+        weakness = f"Missing key skills: {', '.join(list(set(required_skills) - common_skills)) if len(set(required_skills) - common_skills) > 0 else 'None'}."
     else:
-        score = 7
-        skills = 75
-        exp = 70
-        edu = 70
-        
+        score_adj = 0
+        skills_percent = 60
+        strengths = "Relevant education and general experience."
+        weakness = "Significant skill mismatch. Core requirements are not explicitly covered by the candidate's skills list."
+
+    # Final overall score (cap at 9)
+    overall_score = min(9, base_score + score_adj) 
+    
+    # Simple mock percentages for the rest
+    experience_percent = 65 + score_adj * 5 # Ranges from 65% to 85%
+    education_percent = 70 + (1 if 'B.S. Computer Science' in ' '.join(parsed_json.get('education', [])) else 0) * 10 
+
     time.sleep(0.5) # Simulate latency
     
     return f"""
     --- Overall Fit Score ---
-    Overall Fit Score: **{score}/10**
+    Overall Fit Score: **{overall_score}/10**
     
     --- Section Match Analysis ---
-    Skills Match: [{skills}%]
-    Experience Match: [{exp}%]
-    Education Match: [{edu}%]%
+    Skills Match: [{skills_percent}%]
+    Experience Match: [{experience_percent}%]
+    Education Match: [{education_percent}%]%
     
     --- Strengths/Matches ---
-    The candidate shows strong proficiency in Python and Streamlit, which aligns well with the required data processing tools. Education is directly relevant.
+    {strengths}
+    The candidate's education and experience level are highly relevant.
     
     --- Weaknesses/Gaps ---
-    Candidate lacks specific mention of Kubernetes or advanced Docker orchestration, which is a required skill for this role.
+    {weakness}
+    Further discussion is needed on applying conceptual knowledge to real-world deployment challenges.
     
     --- Summary Recommendation ---
-    A strong candidate with core skills. Recommend for interview if the experience gap in orchestration tools can be overlooked or quickly trained.
+    A strong candidate with core skills, but fit depends on the urgency of filling the skill gaps identified. Recommend for interview.
     """
+# --- END FIX ---
 
 
 # --- Tab Content Functions ---
@@ -628,7 +670,8 @@ def jd_management_tab_candidate():
                             st.error(f"Failed to process {url}: {jd_text}")
                             continue
                             
-                        name = f"JD from URL: {url.split('/jobs/view/')[-1].split('/')[0]}"
+                        # Use role for a better name display
+                        name = f"JD for {metadata.get('role', 'Unknown Role')}"
                         st.session_state.candidate_jd_list.append({"name": name, "content": jd_text, **metadata})
                         count += 1
                             
@@ -648,8 +691,9 @@ def jd_management_tab_candidate():
                     count = 0
                     for i, text in enumerate(texts):
                         if text:
-                            name_base = text.splitlines()[0].strip()[:30] if text.splitlines()[0].strip() else f"Pasted JD {len(st.session_state.candidate_jd_list) + i + 1}"
                             metadata = extract_jd_metadata(text)
+                            # Use extracted role for better naming
+                            name_base = metadata.get('role', f"Pasted JD {len(st.session_state.candidate_jd_list) + i + 1}")
                             st.session_state.candidate_jd_list.append({"name": name_base, "content": text, **metadata})
                             count += 1
                     
@@ -746,7 +790,7 @@ def jd_batch_match_tab():
         st.error("❌ Please **add Job Descriptions** in the 'JD Management' tab before running batch analysis.")
         
     elif isinstance(client, MockGroqClient):
-        st.info("ℹ️ Running in Mock LLM Mode. Match results will be simulated.")
+        st.info("ℹ️ Running in Mock LLM Mode. Match results will be simulated based on *key skill overlap* for better consistency.")
         
     else:
         try:
@@ -798,6 +842,7 @@ def jd_batch_match_tab():
                     jd_content = jd_item['content']
 
                     try:
+                        # Call the fixed evaluation function
                         fit_output = evaluate_jd_fit(jd_content, parsed_json) 
                         
                         # --- Extract Score Data from LLM/Mock Output using Regex ---
