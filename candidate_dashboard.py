@@ -90,6 +90,7 @@ class MockGroqClient:
                     exp_p = 60 + (score * 3)
                     edu_p = 70 + (score * 1)
                     
+                    # NOTE: This mock output uses the strict format expected by the regex parser below.
                     mock_fit_output = f"""
                     Overall Fit Score: {score}/10
                     
@@ -569,6 +570,7 @@ def evaluate_jd_fit(job_description, parsed_json):
     
     # CHECK: The fix is here: ensures 'error' is explicitly None
     if parsed_json.get('error') is not None: 
+         # This message is now explicitly caught in the match_batch_tab to set the score to 'Cannot evaluate'
          return f"Cannot evaluate due to resume parsing errors: {parsed_json['error']}"
 
 
@@ -602,7 +604,7 @@ def evaluate_jd_fit(job_description, parsed_json):
     4.  **Gaps/Areas for Improvement:** Key requirements in the JD that are missing or weak in the resume.
     5.  **Overall Summary:** A concise summary of the fit.
     
-    **Format the output strictly as follows, ensuring the scores are easily parsable (use brackets or no brackets around scores):**
+    **Format the output strictly as follows, ensuring the scores are easily parsable (use brackets or no brackets around scores, but they must be present):**
     Overall Fit Score: [Score]/10
     
     --- Section Match Analysis ---
@@ -976,12 +978,17 @@ def jd_batch_match_tab():
                         # Call the LLM-dependent evaluation function
                         fit_output = evaluate_jd_fit(jd_content, parsed_json) 
                         
-                        # --- Extract Score Data from LLM/Mock Output using Regex (Enhanced Robustness) ---
-                        # Matches score/10 with optional brackets and flexible whitespace
+                        # -----------------------------------------------------------
+                        # --- FIX: ROBUST REGEX EXTRACTION FOR SCORE AND PERCENTAGES ---
+                        # -----------------------------------------------------------
+                        
+                        # 1. Overall Score Fix: Use non-greedy match and be flexible with spaces/brackets
                         overall_score_match = re.search(r'Overall Fit Score:\s*\[?\s*(\d+)\s*\]?\s*/10', fit_output, re.IGNORECASE)
+                        
+                        # 2. Section Analysis Block
                         section_analysis_match = re.search(
-                            r'--- Section Match Analysis ---\s*(.*?)\s*Strengths/Matches:', 
-                            fit_output, re.DOTALL
+                            r'--- Section Match Analysis ---\s*(.*?)\s*(?:Strengths/Matches|Overall Summary):', 
+                            fit_output, re.DOTALL | re.IGNORECASE
                         )
                         
                         skills_percent, experience_percent, education_percent = 'N/A', 'N/A', 'N/A'
@@ -989,10 +996,10 @@ def jd_batch_match_tab():
                         if section_analysis_match:
                             section_text = section_analysis_match.group(1)
                             
-                            # Matches percentage with optional brackets and flexible whitespace
-                            skills_match = re.search(r'Skills Match:\s*\[?\s*(\d+)%\s*\]?', section_text, re.IGNORECASE)
-                            experience_match = re.search(r'Experience Match:\s*\[?\s*(\d+)%\s*\]?', section_text, re.IGNORECASE)
-                            education_match = re.search(r'Education Match:\s*\[?\s*(\d+)%\s*\]?', section_text, re.IGNORECASE)
+                            # 3. Percentage Fix: Use non-greedy match, flexible spaces/brackets/label
+                            skills_match = re.search(r'Skills\s*Match:\s*\[?\s*(\d+)%\s*\]?', section_text, re.IGNORECASE)
+                            experience_match = re.search(r'Experience\s*Match:\s*\[?\s*(\d+)%\s*\]?', section_text, re.IGNORECASE)
+                            education_match = re.search(r'Education\s*Match:\s*\[?\s*(\d+)%\s*\]?', section_text, re.IGNORECASE)
                             
                             if skills_match: skills_percent = skills_match.group(1)
                             if experience_match: experience_percent = experience_match.group(1)
@@ -1000,10 +1007,15 @@ def jd_batch_match_tab():
                             
                         overall_score = overall_score_match.group(1) if overall_score_match else 'N/A'
                         
-                        # Check for API/Mock errors
-                        if "AI Evaluation Error" in fit_output or "Cannot evaluate" in fit_output:
-                            overall_score = "Error"
-                        # --- End Score Extraction ---
+                        # 4. Check for API/Mock/Parsing errors
+                        if "AI Evaluation Error" in fit_output:
+                            overall_score = "Error (API)"
+                        elif "Cannot evaluate" in fit_output:
+                            overall_score = "Error (Parse)"
+                            
+                        # -----------------------------------------------------------
+                        # --- END FIX ---
+                        # -----------------------------------------------------------
 
                         results_with_score.append({
                             "jd_name": jd_name,
@@ -1018,7 +1030,7 @@ def jd_batch_match_tab():
                         # This catches parsing errors if the LLM output is malformed even if the API call succeeded.
                         results_with_score.append({
                             "jd_name": jd_name,
-                            "overall_score": "Error",
+                            "overall_score": "Error (Extract)",
                             "numeric_score": -1, 
                             "skills_percent": "Error",
                             "experience_percent": "Error", 
@@ -1065,10 +1077,10 @@ def jd_batch_match_tab():
             # Simple fix to make the role name more readable for display if it's the mock-extracted role
             role_display = full_jd_item.get('role', 'N/A').replace("/ML Engineer", " Engineer")
             
-            # Use 'Cannot evaluate...' message if the overall_score is 'Error' and a parsing error exists
+            # Clean up score display based on error type
             overall_score_display = item["overall_score"]
-            if overall_score_display == "Error" and "Cannot evaluate" in item["full_analysis"]:
-                overall_score_display = "Cannot evaluate" # Shortened for table
+            if overall_score_display.startswith("Error"):
+                overall_score_display = "Error" 
 
             display_data.append({
                 "Rank": item.get("rank", "N/A"),
@@ -1088,11 +1100,11 @@ def jd_batch_match_tab():
             rank_display = f"Rank {item.get('rank', 'N/A')} | "
             
             header_score = item['overall_score']
-            if header_score == "Error" and "Cannot evaluate" in item["full_analysis"]:
-                 header_score = "Parsing Error"
+            if header_score.startswith("Error"):
+                 header_score = "Evaluation Error"
                  
             # Ensure the full analysis is displayed with markdown formatting
-            header_text = f"{rank_display}Report for **{item['jd_name'].replace('--- Simulated JD for: ', '')}** (Score: **{header_score}/10** | S: **{item.get('skills_percent', 'N/A')}%** | E: **{item.get('experience_percent', 'N/A')}%** | Edu: **{item.get('education_percent', 'N/A')}%**)"
+            header_text = f"{rank_display}Report for **{item['jd_name'].replace('--- Simulated JD for: ', '')}** (Score: **{header_score}** | S: **{item.get('skills_percent', 'N/A')}%** | E: **{item.get('experience_percent', 'N/A')}%** | Edu: **{item.get('education_percent', 'N/A')}%**)"
             with st.expander(header_text):
                 # Use st.code to display the LLM output with good formatting
                 st.code(item['full_analysis'], language='markdown')
