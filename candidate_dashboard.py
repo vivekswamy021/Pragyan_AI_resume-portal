@@ -48,7 +48,7 @@ class MockGroqClient:
                     "skills": [
                         "Python", "SQL", "AWS", "Streamlit", 
                         "LLM Integration", "MLOps", "Data Visualization", 
-                        "Docker", "Kubernetes", "Java", "API Services" # Comprehensive skill set for varied matching
+                        "Docker", "Kubernetes", "Java", "API Services" 
                     ], 
                     "education": ["B.S. Computer Science, Mock University, 2020"], 
                     "experience": ["Software Intern, Mock Solutions (2024-2025)", "Data Analyst, Test Corp (2022-2024)"], 
@@ -62,7 +62,60 @@ class MockGroqClient:
                 choice_obj = type('Choice', (object,), {'message': message_obj})()
                 response_obj = type('MockResponse', (object,), {'choices': [choice_obj]})()
                 return response_obj
-        return Completions()
+        
+        # Add a placeholder for the completions object if we need a mock response for fit evaluation
+        class FitCompletions(Completions):
+            def create(self, **kwargs):
+                # Check if it's a fit evaluation call (by looking at the prompt structure)
+                prompt_content = kwargs.get('messages', [{}])[0].get('content', '')
+                
+                if "Evaluate how well the following resume content matches the provided job description" in prompt_content:
+                    # SIMULATED FIT LOGIC (Fallback for when the LLM-dependent function tries to run without a key)
+                    
+                    # Simple heuristic mock score based on role title in the prompt
+                    jd_role_match = re.search(r'Simulated JD for:\s*([A-Za-z\s/-]+)', prompt_content)
+                    jd_role = jd_role_match.group(1).lower() if jd_role_match else "default"
+                    
+                    if 'ai/ml engineer' in jd_role or 'mlops' in jd_role:
+                        score = 8
+                    elif 'data scientist' in jd_role:
+                        score = 7
+                    elif 'cloud engineer' in jd_role:
+                        score = 6
+                    else:
+                        score = 5
+                        
+                    # Calculate percentages based on the score to differentiate the rows
+                    skills_p = 50 + (score * 5)
+                    exp_p = 60 + (score * 3)
+                    edu_p = 70 + (score * 1)
+                    
+                    mock_fit_output = f"""
+                    Overall Fit Score: {score}/10
+                    
+                    --- Section Match Analysis ---
+                    Skills Match: {skills_p}%
+                    Experience Match: {exp_p}%
+                    Education Match: {edu_p}%
+                    
+                    Strengths/Matches:
+                    - Mock Match Point 1 (Role: {jd_role})
+                    - Mock Match Point 2
+                    
+                    Gaps/Areas for Improvement:
+                    - Mock Gap 1
+                    
+                    Overall Summary: Mock summary for score {score}.
+                    """
+                    message_obj = type('Message', (object,), {'content': mock_fit_output})()
+                    choice_obj = type('Choice', (object,), {'message': message_obj})()
+                    response_obj = type('MockResponse', (object,), {'choices': [choice_obj]})()
+                    return response_obj
+                
+                # Return standard parsing mock if not a fit evaluation
+                return super().create(**kwargs)
+
+        return FitCompletions()
 
 try:
     # Attempt to import the real Groq client
@@ -165,26 +218,21 @@ def extract_content(file_type, file_content_bytes, file_name):
         return f"[Error] Fatal Extraction Error: Failed to read file content ({file_type}). Error: {e}\n{traceback.format_exc()}", None
 
 # -----------------------------------------------------------
-# ADAPTED FUNCTION: parse_resume_with_llm (Your logic with regex fix)
+# ADAPTED FUNCTION: parse_resume_with_llm 
 # -----------------------------------------------------------
 
 @st.cache_data(show_spinner="Analyzing content with Groq LLM...")
 def parse_resume_with_llm(text):
     """
     Sends resume text to the LLM for structured information extraction.
-    
-    NOTE: This function incorporates the user's provided 'parse_with_llm' logic 
-    including the critical regex fix for robust JSON extraction.
     """
     
-    # 1. Handle Pre-flight errors (e.g., failed extraction)
-    if text.startswith("[Error"):
-        # Adapt to return the required structured dict with 'error' key
-        return {"name": "Parsing Error", "error": text}
-
-    # Helper function to get a fallback name
     def get_fallback_name():
         return "Vivek Swamy" 
+
+    # 1. Handle Pre-flight errors (e.g., failed extraction)
+    if text.startswith("[Error"):
+        return {"name": "Parsing Error", "error": text}
 
     # 2. Check for and parse direct JSON content (for JSON file uploads)
     json_match_external = re.search(r'--- JSON Content Start ---\s*(.*?)\s*--- JSON Content End ---', text, re.DOTALL)
@@ -221,7 +269,7 @@ def parse_resume_with_llm(text):
         except Exception as e:
             return {"name": get_fallback_name(), "error": f"Mock Client Error: {e}"}
 
-    # 4. Handle Real Groq Client execution (Adapted user's parse_with_llm logic)
+    # 4. Handle Real Groq Client execution 
     
     prompt = f"""Extract the following information from the resume in structured JSON.
     Ensure all relevant details for each category are captured.
@@ -240,8 +288,7 @@ def parse_resume_with_llm(text):
     json_str = ""
     
     try:
-        # Use the real (or placeholder) client object
-        response = client.chat.completions.create( # Use .completions for real Groq client
+        response = client.chat.completions.create( 
             model=GROQ_MODEL,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.2,
@@ -249,15 +296,12 @@ def parse_resume_with_llm(text):
         )
         content = response.choices[0].message.content.strip()
 
-        # --- CRITICAL FIX: AGGRESSIVE JSON ISOLATION USING REGEX (FROM USER'S CODE) ---
-        
-        # 1. Attempt to find the full JSON object using regex (non-greedy from first '{' to last '}')
+        # --- CRITICAL FIX: AGGRESSIVE JSON ISOLATION USING REGEX ---
         json_match = re.search(r'\{.*\}', content, re.DOTALL)
         
         if json_match:
             json_str = json_match.group(0).strip()
             
-            # Strip markdown fences if they still exist after the regex match
             if json_str.startswith('```json'):
                 json_str = json_str[len('```json'):]
             if json_str.endswith('```'):
@@ -265,10 +309,8 @@ def parse_resume_with_llm(text):
             
             json_str = json_str.strip()
             
-            # 2. Attempt to load the JSON
             parsed = json.loads(json_str)
         else:
-            # If we can't find a clear JSON object using regex, raise an error
             raise json.JSONDecodeError("Could not isolate a valid JSON structure from LLM response.", content, 0)
         
         # --- END CRITICAL FIX ---
@@ -511,129 +553,78 @@ def extract_jd_from_linkedin_url(url):
     ---
     """
     
-# Logic for evaluating JD fit (CRITICAL FIX FOR SCORING VARIABILITY)
-def evaluate_jd_fit(jd_content, parsed_json):
+# --- REPLACED FUNCTION WITH LLM-DEPENDENT VERSION ---
+def evaluate_jd_fit(job_description, parsed_json):
     """
-    Mocks the LLM evaluation of resume fit against a JD. 
-    The logic now dynamically scores based on specific role-based keyword overlaps 
-    and introduces variability to differentiate similar JDs (e.g., DS vs. ML Eng).
+    **NEW IMPLEMENTATION**: Evaluates how well a resume fits a given job description, 
+    including section-wise scores, by calling the Groq LLM API.
+    
+    NOTE: This version requires a valid GROQ_API_KEY.
     """
+    # Use the client object, which can be the real Groq client or the MockGroqClient
+    global client, GROQ_MODEL, GROQ_API_KEY
     
-    # Get candidate skills (all lowercase for easy matching)
-    candidate_skills = [s.lower() for s in parsed_json.get('skills', []) if isinstance(s, str)]
-    
-    # Analyze JD content to identify required skills
-    jd_metadata = extract_jd_metadata(jd_content)
-    required_skills = jd_metadata.get('key_skills', [])
-    jd_role = jd_metadata.get('role', '').lower()
-    
-    # Determine overlap
-    common_skills = set(required_skills).intersection(set(candidate_skills))
-    num_common_skills = len(common_skills)
-    
-    # --- Scoring Logic with CRITICAL VARIABILITY FIX ---
-    base_score = 4 # Start neutral/low
-    score_adj = 0 
-    
-    # 1. High-Value Skill Boosts based on JD Role
-    if 'data scientist' in jd_role and 'ai/ml engineer' not in jd_role:
-        # Data Scientist critical skills (less focus on MLOps)
-        ml_skills = ['ml', 'pytorch', 'visualization', 'sql', 'python']
-        ml_match = len(set(ml_skills).intersection(candidate_skills))
-        score_adj += min(3, ml_match) 
-        
-        # FIX: Introduce a small, positive difference for Data Scientist (e.g., 5/10)
-        score_adj += 1 
-        
-        jd_label = "Data Scientist"
-
-    elif 'ai/ml engineer' in jd_role or 'mlops' in jd_role:
-        # AI/ML Engineer critical skills (high focus on MLOps, deployment)
-        mlops_skills = ['mlops', 'llm integration', 'docker', 'kubernetes', 'aws', 'api services']
-        mlops_match = len(set(mlops_skills).intersection(candidate_skills))
-        score_adj += min(4, mlops_match) # Higher potential max boost for better fit
-
-        # FIX: Introduce a slightly higher score for the AI/ML role, as the mock resume 
-        # (with MLOps, Docker, Kubernetes) is a better fit for this role type. (e.g., 6/10)
-        score_adj += 2 
-        
-        jd_label = "AI/ML Engineer"
-        
-    elif 'cloud engineer' in jd_role:
-        # Cloud Engineer critical skills
-        cloud_skills = ['aws', 'docker', 'kubernetes', 'gcp', 'terraform', 'cloud services']
-        cloud_match = len(set(cloud_skills).intersection(candidate_skills))
-        score_adj += min(4, cloud_match) 
-        jd_label = "Cloud Engineer"
-        
-    else:
-        # Default/Software Engineer
-        se_skills = ['java', 'react', 'javascript', 'sql']
-        se_match = len(set(se_skills).intersection(candidate_skills))
-        score_adj += min(3, se_match)
-        jd_label = "Software Engineer"
+    if isinstance(client, MockGroqClient) and not GROQ_API_KEY:
+         # In mock mode, use the special mock implementation for fit evaluation
+         # This relies on the enhanced MockGroqClient.chat().create()
+         response = client.chat().create(model=GROQ_MODEL, messages=[{"role": "user", "content": f"Evaluate how well the following resume content matches the provided job description: {job_description}"}])
+         return response.choices[0].message.content.strip()
 
 
-    # 2. General Skill Overlap Boost
-    score_adj += (num_common_skills // 3) # Additional boost for general skills (Max +2)
-    
-    # Final overall score (cap at 9, min 1)
-    overall_score = min(9, max(1, base_score + score_adj))
-    
-    # Calculate percentages based on the final score
-    # Use the overall score to ensure Skills/Experience/Education also differ
-    skills_percent = 50 + (overall_score * 5)
-    experience_percent = 60 + (overall_score * 3) 
-    education_percent = 70 + (1 if 'computer science' in ' '.join(parsed_json.get('education', [])).lower() else 0) * 10 
-    
-    # Ensure percentages are capped
-    skills_percent = min(95, skills_percent)
-    experience_percent = min(90, experience_percent)
-    education_percent = min(95, education_percent)
-    
-    # --- Dynamic Text Generation ---
-    if overall_score >= 8:
-        strengths = f"Excellent fit! Strong command of core skills like Python, SQL, and direct matches in **{jd_label}** specific tools ({', '.join(list(common_skills)[:2])})."
-        weakness = f"Minor areas for discussion, mainly advanced skills not explicitly listed in the resume."
-        summary = "Highly recommend for immediate interview."
-    elif overall_score >= 6:
-        strengths = f"Good foundational skill match, specifically in {', '.join(list(common_skills)[:2]) if list(common_skills) else 'data processing'}."
-        weakness = f"Missing some key role-specific skills. Needs more experience in advanced {jd_label} topics."
-        summary = "Recommend for interview with a focus on skill gaps."
-    elif overall_score >= 4:
-         strengths = "Relevant education and general experience."
-         weakness = f"Moderate skill mismatch. Core requirements for {jd_label} are only partially covered."
-         summary = "Weak fit. Proceed with caution or recommend for a different role."
-    else:
-        strengths = "Relevant education and general experience."
-        weakness = "Significant skill mismatch. Core requirements are not explicitly covered by the candidate's skills list."
-        summary = "Poor fit. Recommend against interview."
+    if not job_description.strip(): return "Please paste a job description."
+    if "error" in parsed_json: return f"Cannot evaluate due to resume parsing errors: {parsed_json['error']}"
 
+    # Prepare relevant resume data for the LLM
+    relevant_resume_data = {
+        'Skills': parsed_json.get('skills', 'Not found or empty'),
+        'Experience': parsed_json.get('experience', 'Not found or empty'),
+        'Education': parsed_json.get('education', 'Not found or empty'),
+    }
+    resume_summary = json.dumps(relevant_resume_data, indent=2)
 
-    time.sleep(0.5) # Simulate latency
+    prompt = f"""Evaluate how well the following resume content matches the provided job description.
     
-    return f"""
-    --- Overall Fit Score ---
-    Overall Fit Score: **{overall_score}/10**
+    Job Description: {job_description}
+    
+    Resume Sections for Analysis:
+    {resume_summary}
+    
+    Provide a detailed evaluation structured as follows:
+    1.  **Overall Fit Score:** A score out of 10.
+    2.  **Section Match Percentages:** A percentage score for the match in the key sections (Skills, Experience, Education).
+    3.  **Strengths/Matches:** Key points where the resume aligns well with the JD.
+    4.  **Gaps/Areas for Improvement:** Key requirements in the JD that are missing or weak in the resume.
+    5.  **Overall Summary:** A concise summary of the fit.
+    
+    **Format the output strictly as follows, ensuring the scores are easily parsable (use brackets or no brackets around scores):**
+    Overall Fit Score: [Score]/10
     
     --- Section Match Analysis ---
-    Skills Match: [{skills_percent}%]
-    Experience Match: [{experience_percent}%]
-    Education Match: [{education_percent}%]
+    Skills Match: [XX]%
+    Experience Match: [YY]%
+    Education Match: [ZZ]%
     
-    --- Strengths/Matches ---
-    {strengths}
-    The candidate's education and general experience level are relevant.
+    Strengths/Matches:
+    - Point 1
+    - Point 2
     
-    --- Weaknesses/Gaps ---
-    {weakness}
-    Further discussion is needed on applying conceptual knowledge to real-world deployment challenges.
+    Gaps/Areas for Improvement:
+    - Point 1
+    - Point 2
     
-    --- Summary Recommendation ---
-    {summary}
+    Overall Summary: [Concise summary]
     """
-# --- END CRITICAL FIX ---
 
+    try:
+        response = client.chat.completions.create(
+            model=GROQ_MODEL, 
+            messages=[{"role": "user", "content": prompt}], 
+            temperature=0.3
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        return f"AI Evaluation Error: Failed to connect or receive response from LLM. Error: {e}"
+# --- END REPLACED FUNCTION ---
 
 # --- Tab Content Functions ---
     
@@ -913,15 +904,12 @@ def jd_batch_match_tab():
         st.error("❌ Please **add Job Descriptions** in the 'JD Management' tab before running batch analysis.")
         
     elif isinstance(client, MockGroqClient) or not GROQ_API_KEY:
-        st.info("ℹ️ Running in Mock LLM Mode. Match results are simulated based on key skill overlap for better consistency.")
+        st.info("ℹ️ Running in **Mock LLM Mode** for fit evaluation. Results are simulated for consistency, but a valid GROQ_API_KEY is recommended for real AI analysis.")
         
     else:
-        try:
-            # Simple check to see if the client is not the mock client
-            if not hasattr(client, 'chat'):
-                st.warning("⚠️ LLM client setup failed. Match analysis may not be accurate or available.")
-        except NameError:
-             st.warning("⚠️ LLM client setup failed. Match analysis may not be accurate or available.")
+        # Check if the client is not the mock client and the key is set (i.e., we are using the real LLM)
+        if not hasattr(client, 'client_ready') or not client.client_ready:
+            st.warning("⚠️ LLM client setup failed or key is missing. Match analysis may not be accurate or available.")
 
 
     if "candidate_match_results" not in st.session_state:
@@ -965,20 +953,21 @@ def jd_batch_match_tab():
                     jd_content = jd_item['content']
 
                     try:
-                        # Call the fixed evaluation function
+                        # Call the LLM-dependent evaluation function
                         fit_output = evaluate_jd_fit(jd_content, parsed_json) 
                         
                         # --- Extract Score Data from LLM/Mock Output using Regex ---
-                        overall_score_match = re.search(r'Overall Fit Score:\s*[^\d]*(\d+)\s*/10', fit_output, re.IGNORECASE)
+                        overall_score_match = re.search(r'Overall Fit Score:\s*\[?(\d+)\s*/10', fit_output, re.IGNORECASE)
                         section_analysis_match = re.search(
-                            r'--- Section Match Analysis ---\s*(.*?)\s*--- Strengths/Matches ---', 
+                            r'--- Section Match Analysis ---\s*(.*?)\s*Strengths/Matches:', 
                             fit_output, re.DOTALL
                         )
-
+                        
                         skills_percent, experience_percent, education_percent = 'N/A', 'N/A', 'N/A'
                         
                         if section_analysis_match:
                             section_text = section_analysis_match.group(1)
+                            # Using optional brackets '\[?(\d+)%\]?' to handle the user's specified format precisely
                             skills_match = re.search(r'Skills Match:\s*\[?(\d+)%\]?', section_text, re.IGNORECASE)
                             experience_match = re.search(r'Experience Match:\s*\[?(\d+)%\]?', section_text, re.IGNORECASE)
                             education_match = re.search(r'Education Match:\s*\[?(\d+)%\]?', section_text, re.IGNORECASE)
@@ -988,6 +977,10 @@ def jd_batch_match_tab():
                             if education_match: education_percent = education_match.group(1)
                             
                         overall_score = overall_score_match.group(1) if overall_score_match else 'N/A'
+                        
+                        # Check for API/Mock errors
+                        if "AI Evaluation Error" in fit_output or "Cannot evaluate" in fit_output:
+                            overall_score = "Error"
 
                         results_with_score.append({
                             "jd_name": jd_name,
