@@ -536,25 +536,25 @@ def evaluate_jd_fit(jd_content, parsed_json):
     score_adj = 0 
     
     # 1. High-Value Skill Boosts based on JD Role
-    if 'data scientist' in jd_role:
+    if 'data scientist' in jd_role and 'ai/ml engineer' not in jd_role:
         # Data Scientist critical skills (less focus on MLOps)
         ml_skills = ['ml', 'pytorch', 'visualization', 'sql', 'python']
         ml_match = len(set(ml_skills).intersection(candidate_skills))
         score_adj += min(3, ml_match) 
         
-        # FIX: Introduce a small, positive difference for Data Scientist
+        # FIX: Introduce a small, positive difference for Data Scientist (e.g., 5/10)
         score_adj += 1 
         
         jd_label = "Data Scientist"
 
-    elif 'ml engineer' in jd_role:
+    elif 'ai/ml engineer' in jd_role or 'mlops' in jd_role:
         # AI/ML Engineer critical skills (high focus on MLOps, deployment)
         mlops_skills = ['mlops', 'llm integration', 'docker', 'kubernetes', 'aws', 'api services']
         mlops_match = len(set(mlops_skills).intersection(candidate_skills))
         score_adj += min(4, mlops_match) # Higher potential max boost for better fit
 
         # FIX: Introduce a slightly higher score for the AI/ML role, as the mock resume 
-        # (with MLOps, Docker, Kubernetes) is a better fit for this role type.
+        # (with MLOps, Docker, Kubernetes) is a better fit for this role type. (e.g., 6/10)
         score_adj += 2 
         
         jd_label = "AI/ML Engineer"
@@ -577,8 +577,8 @@ def evaluate_jd_fit(jd_content, parsed_json):
     # 2. General Skill Overlap Boost
     score_adj += (num_common_skills // 3) # Additional boost for general skills (Max +2)
     
-    # Final overall score (cap at 9)
-    overall_score = min(9, base_score + score_adj)
+    # Final overall score (cap at 9, min 1)
+    overall_score = min(9, max(1, base_score + score_adj))
     
     # Calculate percentages based on the final score
     # Use the overall score to ensure Skills/Experience/Education also differ
@@ -597,13 +597,17 @@ def evaluate_jd_fit(jd_content, parsed_json):
         weakness = f"Minor areas for discussion, mainly advanced skills not explicitly listed in the resume."
         summary = "Highly recommend for immediate interview."
     elif overall_score >= 6:
-        strengths = f"Good foundational skill match, specifically in {', '.join(list(common_skills)[:2])}."
+        strengths = f"Good foundational skill match, specifically in {', '.join(list(common_skills)[:2]) if list(common_skills) else 'data processing'}."
         weakness = f"Missing some key role-specific skills. Needs more experience in advanced {jd_label} topics."
         summary = "Recommend for interview with a focus on skill gaps."
+    elif overall_score >= 4:
+         strengths = "Relevant education and general experience."
+         weakness = f"Moderate skill mismatch. Core requirements for {jd_label} are only partially covered."
+         summary = "Weak fit. Proceed with caution or recommend for a different role."
     else:
         strengths = "Relevant education and general experience."
         weakness = "Significant skill mismatch. Core requirements are not explicitly covered by the candidate's skills list."
-        summary = "Weak fit. Proceed with caution or recommend for a different role."
+        summary = "Poor fit. Recommend against interview."
 
 
     time.sleep(0.5) # Simulate latency
@@ -1020,8 +1024,6 @@ def jd_batch_match_tab():
                         current_score = item['numeric_score']
                         
                     item['rank'] = current_rank
-                    # NOTE: Removing 'numeric_score' is fine, but keeping it for display is also an option
-                    # del item['numeric_score'] 
                     
                 st.session_state.candidate_match_results = results_with_score
                 # --- END NEW RANKING LOGIC ---
@@ -1040,7 +1042,7 @@ def jd_batch_match_tab():
             full_jd_item = next((jd for jd in st.session_state.candidate_jd_list if jd['name'] == item['jd_name']), {})
             
             # Simple fix to make the role name more readable for display if it's the mock-extracted role
-            role_display = full_jd_item.get('role', 'N/A').replace("/ML Engineer", " Engineer").replace("/ML Engineer", " Engineer")
+            role_display = full_jd_item.get('role', 'N/A').replace("/ML Engineer", " Engineer")
             
             display_data.append({
                 "Rank": item.get("rank", "N/A"),
