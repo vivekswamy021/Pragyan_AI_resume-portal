@@ -63,6 +63,11 @@ try:
                         "phone": "555-0000", 
                         "personal_details": "Successfully parsed by the simulated LLM service.", 
                         "skills": ["Simulated Skill", "Python", "Streamlit"], 
+                        "education": ["B.S. Computer Science, Simulated U, 2020"], 
+                        "experience": ["Software Intern, Mock Solutions (2024-2025)"], 
+                        "certifications": ["Mock Cert"], 
+                        "projects": ["Mock Project"], 
+                        "strength": ["Mock Strength"], 
                         "error": None
                     }
                     
@@ -165,7 +170,6 @@ def parse_resume_with_llm(text):
     # Helper function to get a fallback name
     def get_fallback_name():
         name = "Parsed Candidate"
-        # Using a generic key as the specific 'last_parsed_file_name' might not be set when using paste.
         # Fallback to a key we will set immediately before calling this function.
         if st.session_state.get('current_parsing_source_name'):
             name_part = st.session_state.current_parsing_source_name
@@ -173,6 +177,7 @@ def parse_resume_with_llm(text):
             if name_part.lower() == "pasted_text": 
                 name = "Pasted Resume Data"
             else:
+                # Remove file extension and clean up
                 name = os.path.splitext(name_part)[0].replace('_', ' ').replace('-', ' ').title().replace(' (1)', '').strip()
         
         return name if name else "Parsed Candidate"
@@ -184,22 +189,17 @@ def parse_resume_with_llm(text):
     
     if json_match:
         try:
-            # If JSON is found, try to parse it directly
             json_content = json_match.group(1).strip()
             parsed_data = json.loads(json_content)
             
-            # Ensure name is set, prioritizing the name from the JSON, then the filename fallback
             if not parsed_data.get('name'):
                  parsed_data['name'] = candidate_name
                  
-            # Ensure error is explicitly set to None on success
             parsed_data['error'] = None
             
-            # Return the actual JSON content from the uploaded file
             return parsed_data
         
         except json.JSONDecodeError:
-            # If JSON parsing fails, treat it as an LLM error for the front-end to handle
             return {"name": candidate_name, "error": f"LLM Input Error: Could not decode uploaded JSON content into a valid structure."}
         
     # 3. Handle Mock Client execution (Fallback for PDF/DOCX/TXT)
@@ -211,7 +211,7 @@ def parse_resume_with_llm(text):
             "phone": "555-1234", 
             "linkedin": "https://linkedin.com/in/mock", 
             "github": "https://github.com/mock", 
-            "personal_details": f"Mock summary generated for: {candidate_name}. (Input was text/PDF, not direct JSON)", 
+            "personal_details": f"Mock summary generated for: {candidate_name}. (Input was text/PDF/DOCX, not direct JSON)", 
             "skills": ["Python", "Streamlit", "SQL", "AWS"], 
             "education": ["B.S. Computer Science, Mock University, 2020"], 
             "experience": ["Software Intern, Mock Solutions (2024-2025)", "Data Analyst, Test Corp (2022-2024)"], 
@@ -223,7 +223,6 @@ def parse_resume_with_llm(text):
 
     # 4. Handle Real Groq Client execution (Simulated)
     try:
-        # If this were a real LLM call for PDF/TXT/DOCX, it would return a parsed JSON structure.
         completion = client.chat().create(
             model=GROQ_MODEL,
             messages=[
@@ -236,7 +235,6 @@ def parse_resume_with_llm(text):
         json_content = completion.choices[0].message.content
         parsed_data = json.loads(json_content)
         
-        # Ensure name is set, using LLM's parse first, then fallback
         if not parsed_data.get('name'):
              parsed_data['name'] = candidate_name 
              
@@ -259,13 +257,7 @@ def clear_interview_state():
     
 # Updated signature to match the request
 def parse_and_store_resume(content_source, file_name_key, source_type):
-    """
-    Handles extraction, parsing, and storage of CV data from either a file or pasted text.
-    Returns a dictionary with 'parsed', 'full_text', 'excel_data', and 'name'.
-    
-    The file_name_key is included to match the original function call structure, 
-    but its actual use is for setting the display name in the LLM parser.
-    """
+    """Handles extraction, parsing, and storage of CV data from either a file or pasted text."""
     extracted_text = ""
     excel_data = None
     file_name = "Pasted_Resume"
@@ -283,7 +275,6 @@ def parse_and_store_resume(content_source, file_name_key, source_type):
         st.session_state.current_parsing_source_name = file_name 
 
     if extracted_text.startswith("[Error"):
-        # The extraction itself failed
         return {"error": extracted_text, "full_text": extracted_text, "excel_data": None, "name": file_name}
     
     # 2. Call LLM Parser
@@ -291,20 +282,18 @@ def parse_and_store_resume(content_source, file_name_key, source_type):
     
     # 3. Handle LLM Parsing Error
     if parsed_data.get('error') is not None and parsed_data.get('error') != "":
-        # The LLM parsing itself failed
         return {"error": parsed_data['error'], "full_text": extracted_text, "excel_data": excel_data, "name": parsed_data.get('name', file_name)}
 
     # 4. Create compiled text for download/Q&A
     compiled_text = ""
     for k, v in parsed_data.items():
         if v and k not in ['error']:
-            compiled_text += f"{k.replace('_', ' ').title()}:\n"
+            compiled_text += f"## {k.replace('_', ' ').title()}\n\n"
             if isinstance(v, list):
-                compiled_text += "\n".join([f"- {item}" for item in v]) + "\n\n"
+                compiled_text += "\n".join([f"* {item}" for item in v]) + "\n\n"
             else:
                 compiled_text += str(v) + "\n\n"
 
-    # The final name is now reliably set within the LLM function and is in parsed_data
     final_name = parsed_data.get('name', 'Unknown_Candidate').replace(' ', '_')
     
     return {
@@ -313,6 +302,49 @@ def parse_and_store_resume(content_source, file_name_key, source_type):
         "excel_data": excel_data, 
         "name": final_name
     }
+
+
+def get_download_link(data, filename, file_format):
+    """
+    Generates a base64 encoded download link for the given data and format.
+    
+    :param data: The content to be encoded (string).
+    :param filename: The desired output filename (string).
+    :param file_format: 'json', 'markdown', or 'html'
+    :return: HTML string with the download link.
+    """
+    mime_type = "application/octet-stream"
+    href_label = f"Download {filename}"
+    
+    if file_format == 'json':
+        data_bytes = data.encode('utf-8')
+        mime_type = "application/json"
+    elif file_format == 'markdown':
+        data_bytes = data.encode('utf-8')
+        mime_type = "text/markdown"
+    elif file_format == 'html':
+        # Create a simple HTML document for rendering
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head><title>{filename}</title></head>
+        <body style="font-family: Arial, sans-serif; padding: 20px;">
+        <h1 style="color: #4CAF50;">Parsed Resume Data: {filename.replace('.html', '')}</h1>
+        <hr/>
+        <pre style="white-space: pre-wrap; word-wrap: break-word; background: #f4f4f4; padding: 10px; border: 1px solid #ddd;">
+        {data}
+        </pre>
+        <p>Generated by PragyanAI</p>
+        </body>
+        </html>
+        """
+        data_bytes = html_content.encode('utf-8')
+        mime_type = "text/html"
+    else:
+        return "" # Unsupported format
+
+    b64 = base64.b64encode(data_bytes).decode()
+    return f'<a href="data:{mime_type};base64,{b64}" download="{filename}" target="_blank">{href_label}</a>'
 
 # --- END HELPER FUNCTIONS ---
 
@@ -427,11 +459,10 @@ def resume_parsing_tab():
     
     st.markdown("---")
 
-    # --- A. Upload File Method (UPDATED FILE TYPES HERE) ---
+    # --- A. Upload File Method ---
     if input_method == "Upload File":
         st.markdown("### 1. Upload Resume File") 
         
-        # 🚨 File types expanded here
         file_types = ["pdf", "docx", "txt", "json", "md", "csv", "xlsx", "markdown", "rtf"]
         uploaded_file = st.file_uploader( 
             "Choose PDF, DOCX, TXT, JSON, MD, CSV, XLSX file", 
@@ -452,11 +483,10 @@ def resume_parsing_tab():
 
         if "candidate_uploaded_resumes" not in st.session_state: st.session_state.candidate_uploaded_resumes = []
         if "pasted_cv_text" not in st.session_state: st.session_state.pasted_cv_text = ""
-
+        
         # --- File Management Logic ---
         if uploaded_file is not None:
             if not st.session_state.candidate_uploaded_resumes or st.session_state.candidate_uploaded_resumes[0].name != uploaded_file.name:
-                # Only store the single uploaded file if it's new
                 st.session_state.candidate_uploaded_resumes = [uploaded_file] 
                 st.session_state.pasted_cv_text = "" # Clear pasted text
                 st.toast("Resume file uploaded successfully.")
@@ -473,7 +503,6 @@ def resume_parsing_tab():
         st.markdown("### 2. Parse Uploaded File")
         
         if file_to_parse:
-            # Simple check for re-parsing
             is_already_parsed = (
                 st.session_state.get('current_parsing_source_name') == file_to_parse.name and 
                 st.session_state.get('parsed', {}).get('name') is not None and
@@ -482,19 +511,17 @@ def resume_parsing_tab():
 
             if st.button(f"Parse and Load: **{file_to_parse.name}**", use_container_width=True, disabled=is_already_parsed):
                 with st.spinner(f"Parsing {file_to_parse.name}..."):
-                    # 'single_resume_candidate' is a placeholder key to match the user's provided function call signature
                     result = parse_and_store_resume(file_to_parse, file_name_key='single_resume_candidate', source_type='file')
                     
                     if result.get('error') is None:
                         st.session_state.parsed = result['parsed']
                         st.session_state.full_text = result['full_text']
                         st.session_state.excel_data = result['excel_data'] 
-                        # Use the name generated by the helper function
                         st.session_state.parsed['name'] = result['name'] 
                         clear_interview_state()
                         
                         st.success(f"✅ Successfully loaded and parsed **{st.session_state.parsed['name']}**.")
-                        st.info("The parsed data is ready and available for matching in the **Batch JD Match** tab.")
+                        st.info("The parsed data is ready for matching.")
                         st.rerun() 
                     else:
                         st.error(f"Parsing failed for {file_to_parse.name}: {result['error']}")
@@ -508,7 +535,7 @@ def resume_parsing_tab():
         else:
             st.info("No resume file is currently uploaded. Please upload a file above.")
 
-    # --- B. Paste Text Method (NEW) ---
+    # --- B. Paste Text Method ---
     else: # input_method == "Paste Text"
         st.markdown("### 1. Paste Your CV Text")
         
@@ -524,7 +551,6 @@ def resume_parsing_tab():
         st.markdown("### 2. Parse Pasted Text")
         
         if pasted_text.strip():
-            # Simple check for re-parsing based on text content
             is_already_parsed = (
                 st.session_state.get('current_parsing_source_name') == "Pasted_Text" and 
                 st.session_state.get('pasted_cv_text_input', '') == pasted_text and
@@ -533,10 +559,7 @@ def resume_parsing_tab():
 
             if st.button("Parse and Load Pasted Text", use_container_width=True, disabled=is_already_parsed):
                 with st.spinner("Parsing pasted text..."):
-                    # Clear file upload state
                     st.session_state.candidate_uploaded_resumes = []
-                    
-                    # 'single_resume_candidate' is a placeholder key to match the user's provided function call signature
                     result = parse_and_store_resume(pasted_text, file_name_key='single_resume_candidate', source_type='text')
                     
                     if result.get('error') is None:
@@ -547,7 +570,7 @@ def resume_parsing_tab():
                         clear_interview_state()
                         
                         st.success(f"✅ Successfully loaded and parsed **{st.session_state.parsed['name']}**.")
-                        st.info("The parsed data is ready and available for matching in the **Batch JD Match** tab.")
+                        st.info("The parsed data is ready for matching.")
                         st.rerun() 
                     else:
                         st.error(f"Parsing failed: {result['error']}")
@@ -562,8 +585,8 @@ def resume_parsing_tab():
             
     st.markdown("---")
     
-    # --- New Section for Displaying Loaded Status ---
-    st.subheader("3. Current Loaded Candidate Status")
+    # --- New Section for Displaying Loaded Status & Download Options (MODIFIED) ---
+    st.subheader("3. Current Loaded Candidate Data")
     
     is_data_loaded_and_valid = (
         st.session_state.get('parsed', {}).get('name') is not None and 
@@ -571,13 +594,62 @@ def resume_parsing_tab():
     )
 
     if is_data_loaded_and_valid:
-        st.markdown(f"**Status:** ✅ **Loaded**")
-        st.markdown(f"**Candidate:** **{st.session_state.parsed['name']}**")
-        st.caption(f"Source: {st.session_state.get('current_parsing_source_name', 'Unknown Source').replace('_', ' ').replace('Pasted Text', 'Pasted CV Data')}")
-        st.info("The parsed CV data is ready and available for matching in the **Batch JD Match** tab.")
+        
+        candidate_name = st.session_state.parsed['name']
+        
+        tab_display, tab_download = st.tabs(["📄 Display Parsed Data", "⬇️ Download Formats"])
+
+        # --- Display Tab ---
+        with tab_display:
+            st.markdown(f"**Candidate:** **{candidate_name}**")
+            st.caption(f"Source: {st.session_state.get('current_parsing_source_name', 'Unknown Source').replace('_', ' ').replace('Pasted Text', 'Pasted CV Data')}")
+            
+            st.markdown("---")
+            st.markdown("### Parsed Data (Markdown Format)")
+            st.markdown(st.session_state.full_text)
+            
+            if st.session_state.excel_data:
+                 st.markdown("---")
+                 st.markdown("### Extracted Spreadsheet Data")
+                 st.json(st.session_state.excel_data)
+
+
+        # --- Download Tab ---
+        with tab_download:
+            
+            parsed_json_data = json.dumps(st.session_state.parsed, indent=4)
+            parsed_markdown_data = st.session_state.full_text
+            
+            base_filename = f"{candidate_name.replace(' ', '_')}_Parsed_Resume"
+            
+            st.markdown("### Download Parsed Data")
+            
+            col_json, col_md, col_html = st.columns(3)
+
+            with col_json:
+                json_filename = f"{base_filename}.json"
+                json_link = get_download_link(parsed_json_data, json_filename, 'json')
+                st.markdown(json_link, unsafe_allow_html=True)
+            
+            with col_md:
+                md_filename = f"{base_filename}.md"
+                md_link = get_download_link(parsed_markdown_data, md_filename, 'markdown')
+                st.markdown(md_link, unsafe_allow_html=True)
+
+            with col_html:
+                html_filename = f"{base_filename}.html"
+                html_link = get_download_link(parsed_markdown_data, html_filename, 'html')
+                st.markdown(html_link, unsafe_allow_html=True)
+                
+            st.markdown("---")
+            st.info("The JSON and Markdown downloads contain the structured data extracted by the AI parser. The HTML/PDF link provides a viewable format.")
+
+
     else:
-        st.warning(f"**Status:** ❌ **Not Loaded**")
-        st.info("Please parse a resume in the sections above to continue to the **JD Match** tab.")
+        st.warning(f"**Status:** ❌ **No Valid Resume Data Loaded**")
+        if st.session_state.get('parsed', {}).get('error'):
+             st.error(f"Last Parsing Error: {st.session_state.parsed['error']}")
+        st.info("Please successfully parse a resume in the sections above.")
         
 # --- JD Management Tab Function ---
         
@@ -883,12 +955,11 @@ def filter_jd_tab_content():
 
     if not st.session_state.candidate_jd_list:
         st.info("No Job Descriptions are currently loaded. Please add JDs in the 'JD Management' tab.")
-        # Ensure filtered list is cleared/initialized
         if 'filtered_jds_display' not in st.session_state:
             st.session_state.filtered_jds_display = []
         return
     
-    # --- Skill and Role Extraction (outside the form so options are available immediately) ---
+    # --- Skill and Role Extraction ---
     global DEFAULT_ROLES, DEFAULT_JOB_TYPES, STARTER_KEYWORDS
     
     unique_roles = sorted(list(set(
@@ -915,14 +986,12 @@ def filter_jd_tab_content():
     # --- End Extraction ---
 
     # --- Start Filter Form ---
-    # This entire block uses st.form, so the filtering only runs on button click
     with st.form(key="jd_filter_form"):
         st.markdown("### Select Filters")
         
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            # Skills Multiselect
             selected_skills = st.multiselect(
                 "Skills Keywords (Select multiple)",
                 options=unique_skills_list,
@@ -932,7 +1001,6 @@ def filter_jd_tab_content():
             )
             
         with col2:
-            # Job Type Selectbox
             selected_job_type = st.selectbox(
                 "Job Type",
                 options=["All Job Types"] + unique_job_types,
@@ -941,7 +1009,6 @@ def filter_jd_tab_content():
             )
             
         with col3:
-            # Role Title Selectbox
             selected_role = st.selectbox(
                 "Role Title",
                 options=["All Roles"] + unique_roles,
@@ -949,24 +1016,19 @@ def filter_jd_tab_content():
                 key="filter_role_select"
             )
 
-        # Apply Button (The trigger for the filtering logic)
         apply_filters_button = st.form_submit_button("✅ Apply Filters", type="primary", use_container_width=True)
 
-    # --- Start Filtering Logic (Inside the if apply_filters_button block) ---
+    # --- Start Filtering Logic ---
     if apply_filters_button:
         
-        # Save last selected skills for persistence/re-display if needed
         st.session_state.last_selected_skills = selected_skills
 
         filtered_jds = []
-        
-        # Process skills input to lowercase for matching
         selected_skills_lower = [k.strip().lower() for k in selected_skills]
         
         for jd in all_jd_data:
             jd_role = jd.get('role', 'General Analyst')
             jd_job_type = jd.get('job_type', 'Full-time')
-            # Ensure JD key skills are also clean and lowercased
             jd_key_skills = [
                 s.lower() for s in jd.get('key_skills', []) 
                 if isinstance(s, str) and s.strip()
@@ -978,25 +1040,21 @@ def filter_jd_tab_content():
             # 2. Job Type Filter
             job_type_match = (selected_job_type == "All Job Types") or (selected_job_type == jd_job_type)
             
-            # 3. Skills Filter (Match if no skills are selected OR if ANY selected skill is in the JD's key_skills list)
+            # 3. Skills Filter
             skill_match = True
             if selected_skills_lower:
-                # Check if there is any intersection between selected skills and JD's key skills
                 if not any(k in jd_key_skills for k in selected_skills_lower):
                     skill_match = False
             
-            # Final Match
             if role_match and job_type_match and skill_match:
                 filtered_jds.append(jd)
                 
-        # Store the filtered list in session state for display persistence
         st.session_state.filtered_jds_display = filtered_jds
         st.success(f"Filter applied! Found {len(filtered_jds)} matching Job Descriptions.")
 
-    # --- Display Results (Always display the last calculated list or an empty list) ---
+    # --- Display Results ---
     st.markdown("---")
     
-    # Initialize display list if not set (first run or when JDs are empty)
     if 'filtered_jds_display' not in st.session_state:
         st.session_state.filtered_jds_display = []
         
@@ -1053,7 +1111,6 @@ def candidate_dashboard():
     if "excel_data" not in st.session_state: st.session_state.excel_data = None
     if "candidate_uploaded_resumes" not in st.session_state: st.session_state.candidate_uploaded_resumes = []
     if "pasted_cv_text" not in st.session_state: st.session_state.pasted_cv_text = ""
-    # This key tracks the source currently parsed, replacing 'last_parsed_file_name' for clarity
     if "current_parsing_source_name" not in st.session_state: st.session_state.current_parsing_source_name = None 
     
     if "candidate_jd_list" not in st.session_state: st.session_state.candidate_jd_list = []
@@ -1067,7 +1124,6 @@ def candidate_dashboard():
         ["📄 Resume Parsing", "📚 JD Management", "🎯 Batch JD Match", "🔍 Filter JD"]
     )
     
-    # The updated resume_parsing_tab function is called here
     with tab_parsing:
         resume_parsing_tab()
         
