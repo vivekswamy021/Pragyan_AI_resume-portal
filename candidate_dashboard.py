@@ -37,7 +37,21 @@ class MockGroqClient:
     def chat(self):
         class Completions:
             def create(self, **kwargs):
-                # Mock candidate data (Vivek Swamy)
+                prompt_content = kwargs.get('messages', [{}])[0].get('content', '')
+                
+                # Check if it's a Q&A call
+                if "Answer the following question about the resume concisely and directly." in prompt_content:
+                    question_match = re.search(r'Question:\s*(.*)', prompt_content)
+                    question = question_match.group(1).strip() if question_match else "a question"
+                    
+                    if 'name' in question.lower():
+                        return type('MockResponse', (object,), {'choices': [type('Choice', (object,), {'message': type('Message', (object,), {'content': 'The candidate\'s name is Vivek Swamy.'})})()]})
+                    elif 'skills' in question.lower():
+                        return type('MockResponse', (object,), {'choices': [type('Choice', (object,), {'message': type('Message', (object,), {'content': 'Key skills include Python, SQL, AWS, and MLOps.'})})()]})
+                    else:
+                        return type('MockResponse', (object,), {'choices': [type('Choice', (object,), {'message': type('Message', (object,), {'content': f'Based on the mock resume data, I can provide a simulated answer to your question about {question}.'})})()]})
+
+                # Mock candidate data (Vivek Swamy) for parsing
                 mock_llm_json = {
                     "name": "Vivek Swamy", 
                     "email": "vivek.swamy@example.com", 
@@ -66,7 +80,6 @@ class MockGroqClient:
         # Add a placeholder for the completions object if we need a mock response for fit evaluation
         class FitCompletions(Completions):
             def create(self, **kwargs):
-                # Check if it's a fit evaluation call (by looking at the prompt structure)
                 prompt_content = kwargs.get('messages', [{}])[0].get('content', '')
                 
                 if "Evaluate how well the following resume content matches the provided job description" in prompt_content:
@@ -113,7 +126,7 @@ class MockGroqClient:
                     response_obj = type('MockResponse', (object,), {'choices': [choice_obj]})()
                     return response_obj
                 
-                # Return standard parsing mock if not a fit evaluation
+                # Return standard parsing mock or Q&A mock
                 return super().create(**kwargs)
 
         return FitCompletions()
@@ -218,16 +231,10 @@ def extract_content(file_type, file_content_bytes, file_name):
     except Exception as e:
         return f"[Error] Fatal Extraction Error: Failed to read file content ({file_type}). Error: {e}\n{traceback.format_exc()}", None
 
-# -----------------------------------------------------------
-# ADAPTED FUNCTION: parse_resume_with_llm 
-# -----------------------------------------------------------
-
 @st.cache_data(show_spinner="Analyzing content with Groq LLM...")
 def parse_resume_with_llm(text):
     """
     Sends resume text to the LLM for structured information extraction.
-    
-    FIX: Ensures 'error' is explicitly set to None on successful return path.
     """
     
     def get_fallback_name():
@@ -235,7 +242,6 @@ def parse_resume_with_llm(text):
 
     # 1. Handle Pre-flight errors (e.g., failed extraction)
     if text.startswith("[Error"):
-        # The extraction function already returned an error string
         return {"name": "Parsing Error", "error": text}
 
     # 2. Check for and parse direct JSON content (for JSON file uploads)
@@ -249,7 +255,7 @@ def parse_resume_with_llm(text):
             if not parsed_data.get('name'):
                  parsed_data['name'] = get_fallback_name()
                  
-            parsed_data['error'] = None # <--- CRITICAL FIX: Explicitly set to None
+            parsed_data['error'] = None 
             
             return parsed_data
         
@@ -259,7 +265,6 @@ def parse_resume_with_llm(text):
     # 3. Handle Mock Client execution (Fallback for PDF/DOCX/TXT)
     if isinstance(client, MockGroqClient) or not GROQ_API_KEY:
         try:
-            # We call the mock client's chat.completions.create to get the mock JSON string
             completion = client.chat().create(model=GROQ_MODEL, messages=[{}])
             content = completion.choices[0].message.content.strip()
             parsed_data = json.loads(content)
@@ -267,7 +272,7 @@ def parse_resume_with_llm(text):
             if not parsed_data.get('name'):
                  parsed_data['name'] = get_fallback_name()
             
-            parsed_data['error'] = None # <--- CRITICAL FIX: Explicitly set to None
+            parsed_data['error'] = None 
             return parsed_data
             
         except Exception as e:
@@ -323,7 +328,7 @@ def parse_resume_with_llm(text):
         if not parsed.get('name'):
             parsed['name'] = get_fallback_name()
             
-        parsed['error'] = None # <--- CRITICAL FIX: Explicitly set to None
+        parsed['error'] = None 
         return parsed
 
     except json.JSONDecodeError as e:
@@ -374,9 +379,7 @@ def parse_and_store_resume(content_source, file_name_key, source_type):
     parsed_data = parse_resume_with_llm(extracted_text)
     
     # 3. Handle LLM Parsing Error
-    # Now explicitly checks if error is not None (i.e., it failed)
     if parsed_data.get('error') is not None: 
-        # Use the name from the error dictionary if available, otherwise fallback
         error_name = parsed_data.get('name', file_name) 
         return {"error": parsed_data['error'], "full_text": extracted_text, "excel_data": excel_data, "name": error_name}
 
@@ -568,7 +571,6 @@ def evaluate_jd_fit(job_description, parsed_json):
     # Use the client object, which can be the real Groq client or the MockGroqClient
     global client, GROQ_MODEL, GROQ_API_KEY
     
-    # CHECK: The fix is here: ensures 'error' is explicitly None
     if parsed_json.get('error') is not None: 
          # This message is now explicitly caught in the match_batch_tab to set the score to 'Cannot evaluate'
          return f"Cannot evaluate due to resume parsing errors: {parsed_json['error']}"
@@ -631,7 +633,6 @@ def evaluate_jd_fit(job_description, parsed_json):
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
-        # ⚠️ Critical: Return the full error and the traceback for better logging
         error_output = f"AI Evaluation Error: Failed to connect or receive response from LLM. Error: {e}\n{traceback.format_exc()}"
         return error_output
 # --- END EVALUATE JD FIT FUNCTION ---
@@ -901,7 +902,6 @@ def jd_batch_match_tab():
     st.markdown("Compare your current resume against all saved job descriptions.")
 
     # Determine if a resume/CV is ready
-    # CRITICAL FIX: Ensure 'error' key is explicitly None
     is_resume_parsed = (
         st.session_state.get('parsed') is not None and
         st.session_state.parsed.get('name') is not None and
@@ -978,14 +978,9 @@ def jd_batch_match_tab():
                         # Call the LLM-dependent evaluation function
                         fit_output = evaluate_jd_fit(jd_content, parsed_json) 
                         
-                        # -----------------------------------------------------------
                         # --- FIX: ROBUST REGEX EXTRACTION FOR SCORE AND PERCENTAGES ---
-                        # -----------------------------------------------------------
-                        
-                        # 1. Overall Score Fix: Use non-greedy match and be flexible with spaces/brackets
                         overall_score_match = re.search(r'Overall Fit Score:\s*\[?\s*(\d+)\s*\]?\s*/10', fit_output, re.IGNORECASE)
                         
-                        # 2. Section Analysis Block
                         section_analysis_match = re.search(
                             r'--- Section Match Analysis ---\s*(.*?)\s*(?:Strengths/Matches|Overall Summary):', 
                             fit_output, re.DOTALL | re.IGNORECASE
@@ -996,7 +991,6 @@ def jd_batch_match_tab():
                         if section_analysis_match:
                             section_text = section_analysis_match.group(1)
                             
-                            # 3. Percentage Fix: Use non-greedy match, flexible spaces/brackets/label
                             skills_match = re.search(r'Skills\s*Match:\s*\[?\s*(\d+)%\s*\]?', section_text, re.IGNORECASE)
                             experience_match = re.search(r'Experience\s*Match:\s*\[?\s*(\d+)%\s*\]?', section_text, re.IGNORECASE)
                             education_match = re.search(r'Education\s*Match:\s*\[?\s*(\d+)%\s*\]?', section_text, re.IGNORECASE)
@@ -1013,9 +1007,7 @@ def jd_batch_match_tab():
                         elif "Cannot evaluate" in fit_output:
                             overall_score = "Error (Parse)"
                             
-                        # -----------------------------------------------------------
                         # --- END FIX ---
-                        # -----------------------------------------------------------
 
                         results_with_score.append({
                             "jd_name": jd_name,
@@ -1257,7 +1249,6 @@ def parsed_data_tab():
     st.markdown("This tab displays the loaded candidate data and provides download options.")
     st.markdown("---")
 
-    # CRITICAL FIX: Ensure 'error' key is explicitly None for a 'valid' state
     is_data_loaded_and_valid = (
         st.session_state.get('parsed', {}).get('name') is not None and 
         st.session_state.get('parsed', {}).get('error') is None
@@ -1361,6 +1352,98 @@ def parsed_data_tab():
              st.error(f"Last Parsing Error: {st.session_state.parsed['error']}")
         st.info("Please successfully parse a resume in the **Resume Parsing** tab.")
 
+# --------------------------------------------------------------------------------------
+# NEW CHATBOT FUNCTIONALITY
+# --------------------------------------------------------------------------------------
+
+def qa_on_resume(question):
+    """Chatbot for Resume (Q&A) using LLM."""
+    global client, GROQ_MODEL, GROQ_API_KEY
+    
+    if not GROQ_API_KEY and not isinstance(client, MockGroqClient):
+        return "AI Chatbot Disabled: GROQ_API_KEY not set."
+        
+    parsed_json = st.session_state.parsed
+    full_text = st.session_state.full_text
+    
+    if not parsed_json or parsed_json.get('error') is not None:
+         return "Please parse a valid resume first to enable the Q&A feature."
+
+    prompt = f"""Given the following resume information:
+    Resume Text: {full_text}
+    Parsed Resume Data (JSON): {json.dumps(parsed_json, indent=2)}
+    Answer the following question about the resume concisely and directly.
+    If the information is not present, state that clearly and briefly (e.g., 'Information not found on the resume.').
+    Question: {question}
+    """
+    
+    try:
+        response = client.chat.completions.create(
+            model=GROQ_MODEL, 
+            messages=[{"role": "user", "content": prompt}], 
+            temperature=0.4
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        return f"AI Chatbot Error: Failed to get response from LLM. Error: {e}"
+
+def chatbot_tab_content():
+    """Content for the new Chatbot Tab."""
+    st.header("🤖 Resume Q&A Chatbot")
+    st.markdown("Ask specific questions about the currently loaded resume to the AI.")
+    st.markdown("---")
+    
+    is_data_loaded_and_valid = (
+        st.session_state.get('parsed', {}).get('name') is not None and 
+        st.session_state.get('parsed', {}).get('error') is None
+    )
+    
+    if not is_data_loaded_and_valid:
+        st.warning("⚠️ **Q&A Disabled:** Please parse a valid resume in the 'Resume Parsing' tab first.")
+        return
+    
+    if "chatbot_history" not in st.session_state:
+        st.session_state.chatbot_history = []
+
+    st.info(f"Chatting about: **{st.session_state.parsed['name']}**")
+    st.markdown("---")
+    
+    # 1. Display Chat History
+    for message in st.session_state.chatbot_history:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    # 2. Chat Input and Logic
+    if prompt := st.chat_input("Ask a question about the resume..."):
+        # Add user message to history
+        st.session_state.chatbot_history.append({"role": "user", "content": prompt})
+        
+        # Display user message
+        with st.chat_message("user"):
+            st.markdown(prompt)
+        
+        # Get AI response
+        with st.spinner("Thinking..."):
+            ai_response = qa_on_resume(prompt)
+
+        # Display AI response and add to history
+        with st.chat_message("assistant"):
+            st.markdown(ai_response)
+            
+        st.session_state.chatbot_history.append({"role": "assistant", "content": ai_response})
+        st.rerun()
+
+    # 3. Clear Chat Button
+    if st.session_state.chatbot_history:
+        st.markdown("---")
+        if st.button("🗑️ Clear Chat History", key="clear_chatbot_history"):
+            st.session_state.chatbot_history = []
+            st.rerun()
+
+# --------------------------------------------------------------------------------------
+# END NEW CHATBOT FUNCTIONALITY
+# --------------------------------------------------------------------------------------
+
 
 # -------------------------
 # CANDIDATE DASHBOARD FUNCTION 
@@ -1392,11 +1475,11 @@ def candidate_dashboard():
     if "candidate_match_results" not in st.session_state: st.session_state.candidate_match_results = []
     if 'filtered_jds_display' not in st.session_state: st.session_state.filtered_jds_display = []
     if 'last_selected_skills' not in st.session_state: st.session_state.last_selected_skills = []
-    
+    if "chatbot_history" not in st.session_state: st.session_state.chatbot_history = []
 
-    # --- Main Content with Tabs ---
-    tab_parsing, tab_data_view, tab_jd, tab_batch_match, tab_filter_jd = st.tabs(
-        ["📄 Resume Parsing", "✨ Parsed Data View", "📚 JD Management", "🎯 Batch JD Match", "🔍 Filter JD"]
+    # --- Main Content with Tabs (NEW TAB ADDED) ---
+    tab_parsing, tab_data_view, tab_jd, tab_batch_match, tab_filter_jd, tab_chatbot = st.tabs(
+        ["📄 Resume Parsing", "✨ Parsed Data View", "📚 JD Management", "🎯 Batch JD Match", "🔍 Filter JD", "🤖 Chatbot"]
     )
     
     with tab_parsing:
@@ -1413,6 +1496,9 @@ def candidate_dashboard():
         
     with tab_filter_jd:
         filter_jd_tab_content()
+        
+    with tab_chatbot:
+        chatbot_tab_content()
 
 
 # -------------------------
