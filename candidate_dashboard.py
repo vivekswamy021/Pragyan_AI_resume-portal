@@ -20,6 +20,16 @@ load_dotenv()
 # Note: GROQ_API_KEY loading is kept for structure, but Mock Client is used by default if key is missing.
 GROQ_API_KEY = os.getenv('GROQ_API_KEY')
 
+# --- Default/Mock Data for Filtering ---
+DEFAULT_ROLES = ["Data Scientist", "Cloud Engineer", "Software Engineer"]
+DEFAULT_JOB_TYPES = ["Full-time", "Contract", "Remote"]
+STARTER_KEYWORDS = {
+    "Python", "MySQL", "GCP", "cloud computing", "ML", 
+    "API services", "LLM integration", "JavaScript", "SQL", "AWS" 
+}
+# --- End Default/Mock Data ---
+
+
 # --- Define MockGroqClient globally ---
 
 class MockGroqClient:
@@ -842,6 +852,160 @@ def jd_batch_match_tab():
                 st.code(item['full_analysis'], language='markdown')
 
 
+# --- New Filter JD Tab Function ---
+
+def filter_jd_tab_content():
+    st.header("🔍 Filter Job Descriptions by Criteria")
+    st.markdown("Use the filters below to narrow down your saved Job Descriptions.")
+
+    if not st.session_state.candidate_jd_list:
+        st.info("No Job Descriptions are currently loaded. Please add JDs in the 'JD Management' tab.")
+        # Ensure filtered list is cleared/initialized
+        if 'filtered_jds_display' not in st.session_state:
+            st.session_state.filtered_jds_display = []
+        return
+    
+    # --- Skill and Role Extraction (outside the form so options are available immediately) ---
+    global DEFAULT_ROLES, DEFAULT_JOB_TYPES, STARTER_KEYWORDS
+    
+    unique_roles = sorted(list(set(
+        [item.get('role', 'General Analyst') for item in st.session_state.candidate_jd_list] + DEFAULT_ROLES
+    )))
+    unique_job_types = sorted(list(set(
+        [item.get('job_type', 'Full-time') for item in st.session_state.candidate_jd_list] + DEFAULT_JOB_TYPES
+    )))
+    
+    all_unique_skills = set(STARTER_KEYWORDS)
+    for jd in st.session_state.candidate_jd_list:
+        valid_skills = [
+            skill.strip() for skill in jd.get('key_skills', []) 
+            if isinstance(skill, str) and skill.strip()
+        ]
+        all_unique_skills.update(valid_skills)
+    
+    unique_skills_list = sorted(list(all_unique_skills))
+    
+    if not unique_skills_list:
+        unique_skills_list = ["No skills extracted from current JDs"]
+
+    all_jd_data = st.session_state.candidate_jd_list
+    # --- End Extraction ---
+
+    # --- Start Filter Form ---
+    # This entire block uses st.form, so the filtering only runs on button click
+    with st.form(key="jd_filter_form"):
+        st.markdown("### Select Filters")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            # Skills Multiselect
+            selected_skills = st.multiselect(
+                "Skills Keywords (Select multiple)",
+                options=unique_skills_list,
+                default=st.session_state.get('last_selected_skills', []),
+                key="candidate_filter_skills_multiselect", 
+                help="Select one or more skills. JDs containing ANY of the selected skills will be shown."
+            )
+            
+        with col2:
+            # Job Type Selectbox
+            selected_job_type = st.selectbox(
+                "Job Type",
+                options=["All Job Types"] + unique_job_types,
+                index=0, 
+                key="filter_job_type_select"
+            )
+            
+        with col3:
+            # Role Title Selectbox
+            selected_role = st.selectbox(
+                "Role Title",
+                options=["All Roles"] + unique_roles,
+                index=0, 
+                key="filter_role_select"
+            )
+
+        # Apply Button (The trigger for the filtering logic)
+        apply_filters_button = st.form_submit_button("✅ Apply Filters", type="primary", use_container_width=True)
+
+    # --- Start Filtering Logic (Inside the if apply_filters_button block) ---
+    if apply_filters_button:
+        
+        # Save last selected skills for persistence/re-display if needed
+        st.session_state.last_selected_skills = selected_skills
+
+        filtered_jds = []
+        
+        # Process skills input to lowercase for matching
+        selected_skills_lower = [k.strip().lower() for k in selected_skills]
+        
+        for jd in all_jd_data:
+            jd_role = jd.get('role', 'General Analyst')
+            jd_job_type = jd.get('job_type', 'Full-time')
+            # Ensure JD key skills are also clean and lowercased
+            jd_key_skills = [
+                s.lower() for s in jd.get('key_skills', []) 
+                if isinstance(s, str) and s.strip()
+            ]
+            
+            # 1. Role Filter
+            role_match = (selected_role == "All Roles") or (selected_role == jd_role)
+            
+            # 2. Job Type Filter
+            job_type_match = (selected_job_type == "All Job Types") or (selected_job_type == jd_job_type)
+            
+            # 3. Skills Filter (Match if no skills are selected OR if ANY selected skill is in the JD's key_skills list)
+            skill_match = True
+            if selected_skills_lower:
+                # Check if there is any intersection between selected skills and JD's key skills
+                if not any(k in jd_key_skills for k in selected_skills_lower):
+                    skill_match = False
+            
+            # Final Match
+            if role_match and job_type_match and skill_match:
+                filtered_jds.append(jd)
+                
+        # Store the filtered list in session state for display persistence
+        st.session_state.filtered_jds_display = filtered_jds
+        st.success(f"Filter applied! Found {len(filtered_jds)} matching Job Descriptions.")
+
+    # --- Display Results (Always display the last calculated list or an empty list) ---
+    st.markdown("---")
+    
+    # Initialize display list if not set (first run or when JDs are empty)
+    if 'filtered_jds_display' not in st.session_state:
+        st.session_state.filtered_jds_display = []
+        
+    filtered_jds = st.session_state.filtered_jds_display
+    
+    st.subheader(f"Matching Job Descriptions ({len(filtered_jds)} found)")
+    
+    if filtered_jds:
+        display_data = []
+        for jd in filtered_jds:
+            display_data.append({
+                "Job Description Title": jd['name'].replace("--- Simulated JD for: ", ""),
+                "Role": jd.get('role', 'N/A'),
+                "Job Type": jd.get('job_type', 'N/A'),
+                "Key Skills": ", ".join(jd.get('key_skills', ['N/A'])[:5]) + "...",
+            })
+            
+        st.dataframe(display_data, use_container_width=True)
+
+        st.markdown("##### Detailed View")
+        for idx, jd in enumerate(filtered_jds, 1):
+            with st.expander(f"JD {idx}: {jd['name'].replace('--- Simulated JD for: ', '')} - ({jd.get('role', 'N/A')})"):
+                st.markdown(f"**Job Type:** {jd.get('job_type', 'N/A')}")
+                st.markdown(f"**Extracted Skills:** {', '.join(jd.get('key_skills', ['N/A']))}")
+                st.markdown("---")
+                st.text(jd['content'])
+    elif st.session_state.candidate_jd_list and apply_filters_button:
+        st.info("No Job Descriptions match the selected criteria. Try broadening your filter selections.")
+    elif st.session_state.candidate_jd_list and not apply_filters_button:
+        st.info("Use the filters above and click **'Apply Filters'** to view matching Job Descriptions.")
+
+
 # -------------------------
 # CANDIDATE DASHBOARD FUNCTION 
 # -------------------------
@@ -870,10 +1034,15 @@ def candidate_dashboard():
     
     if "candidate_jd_list" not in st.session_state: st.session_state.candidate_jd_list = []
     if "candidate_match_results" not in st.session_state: st.session_state.candidate_match_results = []
+    if 'filtered_jds_display' not in st.session_state: st.session_state.filtered_jds_display = []
+    if 'last_selected_skills' not in st.session_state: st.session_state.last_selected_skills = []
     
 
     # --- Main Content with Tabs ---
-    tab_parsing, tab_jd, tab_batch_match = st.tabs(["📄 Resume Parsing", "📚 JD Management", "🎯 Batch JD Match"])
+    # Added 'Filter JD' tab next to 'Batch JD Match'
+    tab_parsing, tab_jd, tab_batch_match, tab_filter_jd = st.tabs(
+        ["📄 Resume Parsing", "📚 JD Management", "🎯 Batch JD Match", "🔍 Filter JD"]
+    )
     
     with tab_parsing:
         resume_parsing_tab()
@@ -883,6 +1052,9 @@ def candidate_dashboard():
         
     with tab_batch_match:
         jd_batch_match_tab()
+        
+    with tab_filter_jd:
+        filter_jd_tab_content()
 
 
 # -------------------------
