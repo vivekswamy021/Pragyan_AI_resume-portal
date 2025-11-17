@@ -609,115 +609,8 @@ def resume_parsing_tab():
             
     st.markdown("---")
     
-    # --- Section for Displaying Loaded Status & Download Options ---
-    st.subheader("3. Current Loaded Candidate Data")
-    
-    is_data_loaded_and_valid = (
-        st.session_state.get('parsed', {}).get('name') is not None and 
-        st.session_state.get('parsed', {}).get('error') is None
-    )
-
-    if is_data_loaded_and_valid:
-        
-        candidate_name = st.session_state.parsed['name']
-        
-        # Determine the source display name (FIXED LOGIC)
-        source_key = st.session_state.get('current_parsing_source_name', 'Unknown Source')
-        if source_key == "Pasted_Text":
-            source_display = "Pasted CV Data"
-        else:
-            # If it's a filename, replace underscores/dashes with spaces for clean display
-            source_display = source_key.replace('_', ' ').replace('-', ' ') 
-
-        # Calculate filenames and URIs once
-        base_filename = f"{candidate_name.replace(' ', '_')}_Parsed_Resume"
-        parsed_json_data = json.dumps(st.session_state.parsed, indent=4)
-        parsed_markdown_data = st.session_state.full_text
-        
-        json_filename = f"{base_filename}.json"
-        md_filename = f"{base_filename}.md"
-        html_filename = f"{base_filename}.html"
-        
-        json_data_uri = get_download_link(parsed_json_data, json_filename, 'json')
-        md_data_uri = get_download_link(parsed_markdown_data, md_filename, 'markdown')
-        html_data_uri = get_download_link(parsed_markdown_data, html_filename, 'html')
-        
-        
-        # New tab structure as requested (Markdown and JSON downloads moved inside their views)
-        tab_markdown, tab_json, tab_download = st.tabs([
-            "📄 Markdown View", 
-            "💾 JSON View", 
-            "⬇️ PDF/HTML Download"
-        ])
-
-        # --- Markdown View Tab ---
-        with tab_markdown:
-            st.markdown(f"**Candidate:** **{candidate_name}**")
-            st.caption(f"Source: {source_display}")
-            st.markdown("---")
-            st.markdown("### Resume Content in Markdown Format")
-            st.markdown(st.session_state.full_text)
-            
-            if st.session_state.excel_data:
-                 st.markdown("### Extracted Spreadsheet Data (if applicable)")
-                 st.json(st.session_state.excel_data)
-                 
-            st.markdown("---")
-            st.markdown("##### Download Markdown Data")
-            # Markdown Download Button (Moved here)
-            render_download_button(
-                md_data_uri, 
-                md_filename, 
-                f"⬇️ Download Markdown (.md)", 
-                'markdown'
-            )
-
-
-        # --- JSON View Tab ---
-        with tab_json:
-            st.markdown(f"**Candidate:** **{candidate_name}**")
-            st.caption(f"Source: {source_display}")
-            st.markdown("---")
-            st.markdown("### Structured Data in JSON Format")
-            st.json(st.session_state.parsed)
-
-            st.markdown("---")
-            st.markdown("##### Download JSON Data")
-            # JSON Download Button (Moved here)
-            render_download_button(
-                json_data_uri, 
-                json_filename, 
-                f"💾 Download JSON (.json)", 
-                'json'
-            )
-
-        # --- Download Tab (Now only contains HTML/PDF) ---
-        with tab_download:
-            
-            st.markdown("### Download Viewable Document")
-            st.info("This download provides the data in an HTML file that can be easily viewed or printed/saved as a PDF.")
-            
-            col_html = st.columns(1)[0]
-
-            with col_html:
-                st.markdown(f"**{html_filename.replace('.html', '.pdf/html')}**", help="Viewable document format.")
-                # HTML Download Button (Remains here)
-                render_download_button(
-                    html_data_uri, 
-                    html_filename, 
-                    f"📄 Download HTML (PDF Sim.)", 
-                    'html'
-                )
-                
-            st.markdown("---")
-            st.info("For structured data (JSON) or raw text (Markdown), please check their respective viewing tabs.")
-
-
-    else:
-        st.warning(f"**Status:** ❌ **No Valid Resume Data Loaded**")
-        if st.session_state.get('parsed', {}).get('error'):
-             st.error(f"Last Parsing Error: {st.session_state.parsed['error']}")
-        st.info("Please successfully parse a resume in the sections above.")
+    # *** 3. Current Loaded Candidate Data section has been removed here. ***
+    # The tab now naturally ends after the input method logic.
         
 # --- JD Management Tab Function ---
         
@@ -1158,6 +1051,116 @@ def filter_jd_tab_content():
         st.info("Use the filters above and click **'Apply Filters'** to view matching Job Descriptions.")
 
 
+# --- New Parsed Data Tab (To house the removed content for testing) ---
+
+def parsed_data_tab():
+    st.header("✨ Parsed Resume Data View")
+    st.markdown("This tab displays the loaded candidate data and provides download options.")
+    st.markdown("---")
+
+    is_data_loaded_and_valid = (
+        st.session_state.get('parsed', {}).get('name') is not None and 
+        st.session_state.get('parsed', {}).get('error') is None
+    )
+
+    if is_data_loaded_and_valid:
+        
+        candidate_name = st.session_state.parsed['name']
+        
+        # Determine the source display name
+        source_key = st.session_state.get('current_parsing_source_name', 'Unknown Source')
+        if source_key == "Pasted_Text":
+            source_display = "Pasted CV Data"
+        else:
+            source_display = source_key.replace('_', ' ').replace('-', ' ') 
+
+        # Calculate filenames and URIs once
+        base_filename = f"{candidate_name.replace(' ', '_')}_Parsed_Resume"
+        parsed_json_data = json.dumps(st.session_state.parsed, indent=4)
+        parsed_markdown_data = st.session_state.full_text
+        
+        json_filename = f"{base_filename}.json"
+        md_filename = f"{base_filename}.md"
+        html_filename = f"{base_filename}.html"
+        
+        json_data_uri = get_download_link(parsed_json_data, json_filename, 'json')
+        md_data_uri = get_download_link(parsed_markdown_data, md_filename, 'markdown')
+        html_data_uri = get_download_link(parsed_markdown_data, html_filename, 'html')
+        
+        
+        tab_markdown, tab_json, tab_download = st.tabs([
+            "📄 Markdown View", 
+            "💾 JSON View", 
+            "⬇️ PDF/HTML Download"
+        ])
+
+        # --- Markdown View Tab ---
+        with tab_markdown:
+            st.markdown(f"**Candidate:** **{candidate_name}**")
+            st.caption(f"Source: {source_display}")
+            st.markdown("---")
+            st.markdown("### Resume Content in Markdown Format")
+            st.markdown(st.session_state.full_text)
+            
+            if st.session_state.excel_data:
+                 st.markdown("### Extracted Spreadsheet Data (if applicable)")
+                 st.json(st.session_state.excel_data)
+                 
+            st.markdown("---")
+            st.markdown("##### Download Markdown Data")
+            render_download_button(
+                md_data_uri, 
+                md_filename, 
+                f"⬇️ Download Markdown (.md)", 
+                'markdown'
+            )
+
+
+        # --- JSON View Tab ---
+        with tab_json:
+            st.markdown(f"**Candidate:** **{candidate_name}**")
+            st.caption(f"Source: {source_display}")
+            st.markdown("---")
+            st.markdown("### Structured Data in JSON Format")
+            st.json(st.session_state.parsed)
+
+            st.markdown("---")
+            st.markdown("##### Download JSON Data")
+            render_download_button(
+                json_data_uri, 
+                json_filename, 
+                f"💾 Download JSON (.json)", 
+                'json'
+            )
+
+        # --- Download Tab ---
+        with tab_download:
+            
+            st.markdown("### Download Viewable Document")
+            st.info("This download provides the data in an HTML file that can be easily viewed or printed/saved as a PDF.")
+            
+            col_html = st.columns(1)[0]
+
+            with col_html:
+                st.markdown(f"**{html_filename.replace('.html', '.pdf/html')}**", help="Viewable document format.")
+                render_download_button(
+                    html_data_uri, 
+                    html_filename, 
+                    f"📄 Download HTML (PDF Sim.)", 
+                    'html'
+                )
+                
+            st.markdown("---")
+            st.info("For structured data (JSON) or raw text (Markdown), please check their respective viewing tabs.")
+
+
+    else:
+        st.warning(f"**Status:** ❌ **No Valid Resume Data Loaded**")
+        if st.session_state.get('parsed', {}).get('error'):
+             st.error(f"Last Parsing Error: {st.session_state.parsed['error']}")
+        st.info("Please successfully parse a resume in the **Resume Parsing** tab.")
+
+
 # -------------------------
 # CANDIDATE DASHBOARD FUNCTION 
 # -------------------------
@@ -1191,12 +1194,15 @@ def candidate_dashboard():
     
 
     # --- Main Content with Tabs ---
-    tab_parsing, tab_jd, tab_batch_match, tab_filter_jd = st.tabs(
-        ["📄 Resume Parsing", "📚 JD Management", "🎯 Batch JD Match", "🔍 Filter JD"]
+    tab_parsing, tab_data_view, tab_jd, tab_batch_match, tab_filter_jd = st.tabs(
+        ["📄 Resume Parsing", "✨ Parsed Data View", "📚 JD Management", "🎯 Batch JD Match", "🔍 Filter JD"]
     )
     
     with tab_parsing:
         resume_parsing_tab()
+        
+    with tab_data_view:
+        parsed_data_tab()
         
     with tab_jd:
         jd_management_tab_candidate()
