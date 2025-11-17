@@ -17,22 +17,30 @@ GROQ_MODEL = "llama-3.1-8b-instant"
 load_dotenv()
 GROQ_API_KEY = os.getenv('GROQ_API_KEY')
 
-# Initialize Groq Client or Mock Client 
+# --- FIX: Define MockGroqClient globally so it's always available for type checking ---
+
+class MockGroqClient:
+    """Mock client for local testing when Groq is not available or key is missing."""
+    def chat(self):
+        class Completions:
+            def create(self, **kwargs):
+                # Simple mock response
+                return type('MockResponse', (object,), {'choices': [{'message': {'content': '{"name": "Mock Candidate", "summary": "Mock summary for testing.", "skills": ["Python", "Streamlit"]}'}}]})()
+        return Completions()
+
+# Initialize Groq Client or use Mock Client 
+client = None
 try:
     from groq import Groq
     if not GROQ_API_KEY:
         raise ValueError("GROQ_API_KEY not set.")
+    # Attempt to initialize the real client
     client = Groq(api_key=GROQ_API_KEY)
-except (ImportError, ValueError) as e:
-    # Mock Client for local testing without Groq
-    class MockGroqClient:
-        def chat(self):
-            class Completions:
-                def create(self, **kwargs):
-                    # Simple mock response
-                    return type('MockResponse', (object,), {'choices': [{'message': {'content': '{"name": "Mock Candidate", "summary": "Mock summary for testing.", "skills": ["Python", "Streamlit"]}'}}]})()
-            return Completions()
+except (ImportError, ValueError, Exception) as e:
+    # Fallback to Mock Client
+    st.warning(f"Using Mock LLM Client. Groq setup failed: {e.__class__.__name__}. Set GROQ_API_KEY and install 'groq' for full functionality.")
     client = MockGroqClient()
+
 
 # --- Utility Functions ---
 
@@ -43,7 +51,6 @@ def go_to(page_name):
 def get_file_type(file_name):
     """Identifies the file type based on its extension."""
     ext = os.path.splitext(file_name)[1].lower().strip('.')
-    # UPDATED: Added markdown, json, and xlsx
     if ext == 'pdf': return 'pdf'
     elif ext in ('docx', 'doc'): return 'docx'
     elif ext == 'txt': return 'txt'
@@ -67,14 +74,12 @@ def extract_content(file_type, file_content_bytes, file_name):
             doc = docx.Document(BytesIO(file_content_bytes))
             text = '\n'.join([para.text for para in doc.paragraphs])
         
-        # UPDATED: Handling Markdown and TXT
         elif file_type in ['txt', 'markdown']:
             try:
                 text = file_content_bytes.decode('utf-8')
             except UnicodeDecodeError:
                  text = file_content_bytes.decode('latin-1')
         
-        # UPDATED: Handling JSON
         elif file_type == 'json':
             try:
                 data = json.loads(file_content_bytes.decode('utf-8'))
@@ -84,10 +89,8 @@ def extract_content(file_type, file_content_bytes, file_name):
             except UnicodeDecodeError:
                 return f"[Error] JSON content extraction failed: Unicode Decode Error."
         
-        # UPDATED: Handling XLSX (Placeholder)
         elif file_type == 'xlsx':
-            # NOTE: Full XLSX parsing requires pandas and potentially openpyxl, which are heavy dependencies.
-            # This is a placeholder for a simple app environment.
+            # NOTE: Placeholder for XLSX/Excel file parsing.
             return f"[Error] XLSX/Excel file parsing is complex and requires specific libraries (pandas/openpyxl). Please copy and paste the text content from the file instead."
 
         if not text.strip():
@@ -102,13 +105,16 @@ def extract_content(file_type, file_content_bytes, file_name):
 @st.cache_data(show_spinner="Analyzing content with Groq LLM...")
 def parse_resume_with_llm(text):
     """Sends resume text to the LLM for structured information extraction."""
+    # The fix ensures MockGroqClient is defined here.
     if text.startswith("[Error") or isinstance(client, MockGroqClient):
         # Mock structured data for demonstration
         return {"name": "Mock Candidate", "email": "mock@example.com", "phone": "555-1234", "summary": "Highly motivated individual with mock experience in Python and Streamlit.", "skills": ["Python", "Streamlit", "SQL", "AWS"], "education": ["B.S. Computer Science, Mock University"], "experience": ["Software Intern, Mock Solutions (2024-2025)"], "error": "Mock/Parsing error." if isinstance(client, MockGroqClient) else text}
 
     # Actual Groq call logic would go here
     prompt = f"Extract structured data from resume: {text}..."
-    # ... (Groq API call logic)
+    # Placeholder for actual Groq call
+    # response = client.chat.completions.create(model=GROQ_MODEL, messages=[...])
+    # parsed_data = json.loads(response.choices[0].message.content)
     return {"name": "Parsed Candidate", "summary": "Actual parsed summary.", "skills": ["Real", "Python", "Streamlit"], "education": ["University of Code"], "experience": ["Senior Developer, TechCo"]} 
 
 
@@ -165,7 +171,6 @@ def extract_jd_from_linkedin_url(url):
 def evaluate_jd_fit(jd_content, parsed_json):
     """
     Mocks the LLM evaluation of resume fit against a JD.
-    In a real app, this would be a Groq call with a detailed prompt.
     """
     
     # Mocking different scores based on JD content for demonstration
@@ -246,7 +251,7 @@ def generate_and_display_cv(cv_name):
 def resume_parsing_tab():
     st.header("📄 Upload/Paste Resume for AI Parsing")
     
-    # UPDATED FILE UPLOADER TYPES
+    # File types allowed
     file_types_allowed = ['pdf', 'docx', 'txt', 'md', 'json', 'xlsx']
     
     with st.form("resume_parsing_form", clear_on_submit=False):
@@ -458,8 +463,8 @@ def jd_batch_match_tab():
     elif not st.session_state.candidate_jd_list:
         st.error("Please **add Job Descriptions** in the 'JD Management' tab before running batch analysis.")
         
-    elif not GROQ_API_KEY and isinstance(client, MockGroqClient):
-        st.error("Cannot use JD Match: GROQ_API_KEY is not configured or LLM client failed to initialize.")
+    elif isinstance(client, MockGroqClient):
+        st.error("Cannot run LLM match analysis: The LLM client is a **Mock Client**. Please configure `GROQ_API_KEY` and install 'groq' for full functionality.")
         
     else:
         if "candidate_match_results" not in st.session_state:
