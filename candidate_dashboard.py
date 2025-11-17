@@ -27,28 +27,46 @@ class MockGroqClient:
     def chat(self):
         class Completions:
             def create(self, **kwargs):
-                # Simple mock response
-                return type('MockResponse', (object,), {'choices': [{'message': {'content': '{"name": "Mock Candidate", "summary": "Mock summary for testing.", "skills": ["Python", "Streamlit"]}'}}]})()
+                # Simple mock response structure
+                return type('MockResponse', (object,), {'choices': [{'message': {'content': '{"name": "Mock Candidate", "summary": "Mock summary for testing.", "skills": ["Python", "Streamlit"], "email": "mock@example.com", "phone": "555-1234", "linkedin": "https://linkedin.com/in/mock", "github": "https://github.com/mock", "personal_details": "Mock summary for testing.", "education": ["Mock University"], "experience": ["Mock Job"], "certifications": ["Mock Cert"], "projects": ["Mock Project"], "strength": ["Mock Strength"], "error": null}'}}]})()
         return Completions()
 
 # Initialize Groq Client or use Mock Client 
 client = None
 try:
     # Attempt to initialize the real client
-    # NOTE: The actual 'groq' import is commented out here as per instructions 
-    # but would be present in a running environment. We'll simulate the check.
     if not GROQ_API_KEY:
         # If key is missing, treat it as a setup failure and fall back to mock
         raise ValueError("GROQ_API_KEY not set.") 
     
-    # Simulate the Groq Client object if the key is present
+    # --- FIX: Simulated Groq Client with correct nested structure ---
     class Groq:
         def __init__(self, api_key): pass
         def chat(self):
             class Completions:
                 def create(self, **kwargs):
-                    # Mock Real Response structure
-                    return type('MockResponse', (object,), {'choices': [{'message': {'content': '{"name": "Parsed Candidate", "email": "parsed@example.com", "phone": "555-9876", "linkedin": "https://linkedin.com/in/parsed", "github": "https://github.com/parsed", "personal_details": "Actual parsed summary from LLM.", "skills": ["Real", "Python", "Streamlit"], "education": ["University of Code, 2021"], "experience": ["Senior Developer, TechCo, 2021 - Present"], "certifications": ["AWS Certified"], "projects": ["Project Alpha"], "strength": ["Teamwork"], "error": None}'}}]})()
+                    # Mock JSON response that the LLM would return
+                    mock_llm_json = {
+                        "name": "Parsed Candidate", 
+                        "email": "parsed@example.com", 
+                        "phone": "555-9876", 
+                        "linkedin": "https://linkedin.com/in/parsed", 
+                        "github": "https://github.com/parsed", 
+                        "personal_details": "Actual parsed summary from LLM.", 
+                        "skills": ["Real", "Python", "Streamlit"], 
+                        "education": ["University of Code, 2021"], 
+                        "experience": ["Senior Developer, TechCo, 2021 - Present"], 
+                        "certifications": ["AWS Certified"], 
+                        "projects": ["Project Alpha"], 
+                        "strength": ["Teamwork"], 
+                        "error": None
+                    }
+                    
+                    # Create the nested object structure to match the real API response
+                    message_obj = type('Message', (object,), {'content': json.dumps(mock_llm_json)})()
+                    choice_obj = type('Choice', (object,), {'message': message_obj})()
+                    response_obj = type('MockResponse', (object,), {'choices': [choice_obj]})()
+                    return response_obj
             return Completions()
         
     client = Groq(api_key=GROQ_API_KEY)
@@ -99,6 +117,8 @@ def extract_content(file_type, file_content_bytes, file_name):
         
         elif file_type == 'json':
             try:
+                # FIX: When parsing a JSON file, we pass the content directly as text 
+                # so the LLM can parse the *resume data* from the JSON.
                 data = json.loads(file_content_bytes.decode('utf-8'))
                 text = "--- JSON Content Start ---\n" + json.dumps(data, indent=2) + "\n--- JSON Content End ---"
             except json.JSONDecodeError:
@@ -165,9 +185,9 @@ def parse_resume_with_llm(text):
             "error": None
         }
 
-    # 3. Handle Real Groq Client execution (MOCKED HERE for a successful return structure)
+    # 3. Handle Real Groq Client execution (MOCKED HERE)
     try:
-        # Simulate a call to the LLM and parsing the result
+        # This will now use the correctly structured mock client object if GROQ_API_KEY is present
         completion = client.chat().create(
             model=GROQ_MODEL,
             messages=[
@@ -176,8 +196,10 @@ def parse_resume_with_llm(text):
             ],
             response_format={"type": "json_object"}
         )
-        # Assuming the LLM returns a JSON string in 'completion.choices[0].message.content'
+        
+        # Access the content through the correct nested structure
         json_content = completion.choices[0].message.content
+        
         parsed_data = json.loads(json_content)
         
         # Ensure essential keys are present, even if empty
@@ -492,7 +514,7 @@ def resume_parsing_tab():
                 with st.spinner(f"Parsing {file_to_parse.name}..."):
                     result = parse_and_store_resume(file_to_parse, source_type='file')
                     
-                    if "error" not in result:
+                    if "error" not in result or result['error'] is None:
                         st.session_state.parsed = result['parsed']
                         st.session_state.full_text = result['full_text']
                         st.session_state.excel_data = result['excel_data'] 
@@ -538,7 +560,7 @@ def resume_parsing_tab():
                     
                     result = parse_and_store_resume(pasted_text, source_type='text')
                     
-                    if "error" not in result:
+                    if "error" not in result or result['error'] is None:
                         st.session_state.parsed = result['parsed']
                         st.session_state.full_text = result['full_text']
                         st.session_state.excel_data = result['excel_data'] 
@@ -655,7 +677,7 @@ def resume_parsing_tab():
         with tab_pdf:
             st.markdown("### Download CV as HTML (Print-to-PDF)")
             st.info("Click the button below to download an HTML file. Open the file in your browser and use the browser's **'Print'** function, selecting **'Save as PDF'** to create your final CV document.")
-            
+            st.markdown("")
             
             html_output = generate_cv_html(filled_data_for_preview)
 
