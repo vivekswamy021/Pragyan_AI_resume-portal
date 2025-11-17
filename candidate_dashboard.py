@@ -13,6 +13,7 @@ import time
 # --- CONFIGURATION & API SETUP ---
 
 GROQ_MODEL = "llama-3.1-8b-instant"
+# Load environment variables (e.g., GROQ_API_KEY)
 load_dotenv()
 GROQ_API_KEY = os.getenv('GROQ_API_KEY')
 
@@ -32,12 +33,13 @@ client = None
 try:
     from groq import Groq
     if not GROQ_API_KEY:
-        raise ValueError("GROQ_API_KEY not set.")
+        # If key is missing, treat it as a setup failure and fall back to mock
+        raise ValueError("GROQ_API_KEY not set.") 
     # Attempt to initialize the real client
     client = Groq(api_key=GROQ_API_KEY)
 except (ImportError, ValueError, Exception) as e:
     # Fallback to Mock Client
-    st.warning(f"Using Mock LLM Client. Groq setup failed: {e.__class__.__name__}. Set GROQ_API_KEY and install 'groq' for full functionality.")
+    st.warning(f"⚠️ Using Mock LLM Client. Groq setup failed: {e.__class__.__name__}. Set GROQ_API_KEY and install 'groq' for full functionality.")
     client = MockGroqClient()
 
 
@@ -62,6 +64,7 @@ def extract_content(file_type, file_content_bytes, file_name):
     """Extracts text content from uploaded file content (bytes)."""
     text = ''
     try:
+        # ... (PDF, DOCX, TXT, JSON, XLSX extraction logic remains the same)
         if file_type == 'pdf':
             with pdfplumber.open(BytesIO(file_content_bytes)) as pdf:
                 for page in pdf.pages:
@@ -103,13 +106,62 @@ def extract_content(file_type, file_content_bytes, file_name):
 @st.cache_data(show_spinner="Analyzing content with Groq LLM...")
 def parse_resume_with_llm(text):
     """Sends resume text to the LLM for structured information extraction."""
-    if text.startswith("[Error") or isinstance(client, MockGroqClient):
+    
+    # 1. Handle Pre-flight errors (e.g., failed extraction)
+    if text.startswith("[Error"):
+        # Returns a dictionary with the original error message for the front end to handle
+        return {"name": "Parsing Error", "error": text}
+
+    # 2. Handle Mock Client execution (Always returns success for testing)
+    if isinstance(client, MockGroqClient):
         # Mock structured data for demonstration
-        return {"name": "Mock Candidate", "email": "mock@example.com", "phone": "555-1234", "linkedin": "linkedin.com/in/mock", "github": "github.com/mock", "personal_details": "Highly motivated individual with mock experience in Python and Streamlit.", "skills": ["Python", "Streamlit", "SQL", "AWS"], "education": ["B.S. Computer Science, Mock University"], "experience": ["Software Intern, Mock Solutions (2024-2025)"], "certifications": ["Mock Certification"], "projects": ["Mock Project"], "strength": ["Mock Strength"], "error": "Mock/Parsing error." if isinstance(client, MockGroqClient) else text}
+        # ERROR is explicitly set to None (or just omitted) on mock success
+        return {
+            "name": "Mock Candidate", 
+            "email": "mock@example.com", 
+            "phone": "555-1234", 
+            "linkedin": "linkedin.com/in/mock", 
+            "github": "github.com/mock", 
+            "personal_details": "Highly motivated individual with mock experience in Python and Streamlit.", 
+            "skills": ["Python", "Streamlit", "SQL", "AWS"], 
+            "education": ["B.S. Computer Science, Mock University"], 
+            "experience": ["Software Intern, Mock Solutions (2024-2025)"], 
+            "certifications": ["Mock Certification"], 
+            "projects": ["Mock Project"], 
+            "strength": ["Mock Strength"], 
+            "error": None  # <--- Fix: Set error to None for mock success
+        }
 
-    # Placeholder for actual Groq call
-    return {"name": "Parsed Candidate", "email": "parsed@example.com", "phone": "555-9876", "linkedin": "linkedin.com/in/parsed", "github": "github.com/parsed", "personal_details": "Actual parsed summary from LLM.", "skills": ["Real", "Python", "Streamlit"], "education": ["University of Code"], "experience": ["Senior Developer, TechCo"], "certifications": ["AWS Certified"], "projects": ["Project Alpha"], "strength": ["Teamwork"], "error": None} 
-
+    # 3. Handle Real Groq Client execution (MOCKED HERE for a successful return structure)
+    try:
+        # Placeholder for actual Groq call
+        # response = client.chat.completions.create(...)
+        # parsed_json = json.loads(response.choices[0].message.content)
+        
+        # Simulating a successful real Groq call response structure
+        parsed_data = {
+            "name": "Parsed Candidate", 
+            "email": "parsed@example.com", 
+            "phone": "555-9876", 
+            "linkedin": "linkedin.com/in/parsed", 
+            "github": "github.com/parsed", 
+            "personal_details": "Actual parsed summary from LLM.", 
+            "skills": ["Real", "Python", "Streamlit"], 
+            "education": ["University of Code"], 
+            "experience": ["Senior Developer, TechCo"], 
+            "certifications": ["AWS Certified"], 
+            "projects": ["Project Alpha"], 
+            "strength": ["Teamwork"], 
+            "error": None # <--- Fix: Set error to None on real LLM success
+        }
+        return parsed_data
+        
+    except Exception as e:
+        # Catch any exceptions during the Groq call or JSON parsing
+        error_message = f"LLM Processing Error: {e.__class__.__name__} - {str(e)}"
+        return {"name": "Parsing Error", "error": error_message}
+    
+    
 
 @st.cache_data(show_spinner="Analyzing JD for metadata...")
 def extract_jd_metadata(jd_text):
@@ -316,7 +368,8 @@ def resume_parsing_tab():
             with st.spinner("🧠 Sending to Groq LLM for structured parsing..."):
                 parsed_data = parse_resume_with_llm(extracted_text)
             
-            if "error" in parsed_data and parsed_data.get('error') != "Mock/Parsing error.":
+            # CRITICAL FIX: Check if an error exists AND is not None/empty before failing
+            if parsed_data.get('error') is not None and parsed_data.get('error') != "":
                 st.error(f"AI Parsing Failed: {parsed_data['error']}")
                 return
 
@@ -365,8 +418,6 @@ def cv_management_tab_content():
             # Otherwise, use the clean default structure
             st.session_state.cv_form_data = default_parsed.copy()
             
-    # CRITICAL FIX: Ensure form data keys are accessed safely, which the initialization above now guarantees, 
-    # but defensive coding for list-to-string conversion is still necessary.
     
     # --- CV Builder Form ---
     with st.form("cv_builder_form"):
@@ -377,6 +428,7 @@ def cv_management_tab_content():
         with col1:
             st.session_state.cv_form_data['name'] = st.text_input(
                 "Full Name", 
+                # CRITICAL FIX for KeyError: 'name' in text_input's value parameter
                 value=st.session_state.cv_form_data.get('name', ''), 
                 key="cv_name"
             )
@@ -779,143 +831,157 @@ def jd_batch_match_tab():
         st.error("Please **add Job Descriptions** in the 'JD Management' tab before running batch analysis.")
         
     elif isinstance(client, MockGroqClient):
-        st.error("Cannot run LLM match analysis: The LLM client is a **Mock Client**. Please configure `GROQ_API_KEY` and install 'groq' for full functionality.")
+        # We allow mock client to run the mock match for demonstration purposes
+        st.info("ℹ️ Running in Mock LLM Mode. Match results will be simulated.")
         
     else:
-        if "candidate_match_results" not in st.session_state:
-            st.session_state.candidate_match_results = []
+        # Check if the real client has failed setup
+        try:
+             # Just a check to see if the client is valid and not a Mock
+            if not isinstance(client, Groq):
+                st.warning("LLM client setup failed. Match analysis may not be accurate or available.")
+        except NameError:
+             # Handle case where Groq was never imported/initialized
+             st.warning("LLM client setup failed. Match analysis may not be accurate or available.")
 
-        # 1. Get all available JD names
-        all_jd_names = [item['name'] for item in st.session_state.candidate_jd_list]
+
+    if "candidate_match_results" not in st.session_state:
+        st.session_state.candidate_match_results = []
+
+    # 1. Get all available JD names
+    all_jd_names = [item['name'] for item in st.session_state.candidate_jd_list]
+    
+    # 2. Add multiselect widget
+    selected_jd_names = st.multiselect(
+        "Select Job Descriptions to Match Against",
+        options=all_jd_names,
+        default=all_jd_names, # Default to selecting all JDs
+        key='candidate_batch_jd_select'
+    )
+    
+    # 3. Filter the list of JDs based on selection
+    jds_to_match = [
+        jd_item for jd_item in st.session_state.candidate_jd_list 
+        if jd_item['name'] in selected_jd_names
+    ]
+    
+    if st.button(f"Run Match Analysis on **{len(jds_to_match)}** Selected JD(s)"):
+        st.session_state.candidate_match_results = []
         
-        # 2. Add multiselect widget
-        selected_jd_names = st.multiselect(
-            "Select Job Descriptions to Match Against",
-            options=all_jd_names,
-            default=all_jd_names, # Default to selecting all JDs
-            key='candidate_batch_jd_select'
-        )
-        
-        # 3. Filter the list of JDs based on selection
-        jds_to_match = [
-            jd_item for jd_item in st.session_state.candidate_jd_list 
-            if jd_item['name'] in selected_jd_names
-        ]
-        
-        if st.button(f"Run Match Analysis on **{len(jds_to_match)}** Selected JD(s)"):
-            st.session_state.candidate_match_results = []
+        if not jds_to_match:
+            st.warning("Please select at least one Job Description to run the analysis.")
             
-            if not jds_to_match:
-                st.warning("Please select at least one Job Description to run the analysis.")
+        elif not is_resume_parsed or not st.session_state.parsed.get('name'):
+             st.warning("Please **upload and parse your resume** first.")
+
+        else:
+            resume_name = st.session_state.parsed.get('name', 'Uploaded Resume')
+            parsed_json = st.session_state.parsed
+            results_with_score = []
+
+            with st.spinner(f"Matching {resume_name}'s resume against {len(jds_to_match)} selected JD(s)..."):
                 
-            else:
-                resume_name = st.session_state.parsed.get('name', 'Uploaded Resume')
-                parsed_json = st.session_state.parsed
-                results_with_score = []
+                # Loop over jds_to_match
+                for jd_item in jds_to_match:
+                    jd_name = jd_item['name']
+                    jd_content = jd_item['content']
 
-                with st.spinner(f"Matching {resume_name}'s resume against {len(jds_to_match)} selected JD(s)..."):
-                    
-                    # Loop over jds_to_match
-                    for jd_item in jds_to_match:
-                        jd_name = jd_item['name']
-                        jd_content = jd_item['content']
-
-                        try:
-                            fit_output = evaluate_jd_fit(jd_content, parsed_json) # Function used to call LLM/Mock LLM
-                            
-                            # --- Extract Score Data from LLM/Mock Output using Regex ---
-                            overall_score_match = re.search(r'Overall Fit Score:\s*[^\d]*(\d+)\s*/10', fit_output, re.IGNORECASE)
-                            section_analysis_match = re.search(
-                                r'--- Section Match Analysis ---\s*(.*?)\s*--- Strengths/Matches ---', 
-                                fit_output, re.DOTALL
-                            )
-
-                            skills_percent, experience_percent, education_percent = 'N/A', 'N/A', 'N/A'
-                            
-                            if section_analysis_match:
-                                section_text = section_analysis_match.group(1)
-                                skills_match = re.search(r'Skills Match:\s*\[?(\d+)%\]?', section_text, re.IGNORECASE)
-                                experience_match = re.search(r'Experience Match:\s*\[?(\d+)%\]?', section_text, re.IGNORECASE)
-                                education_match = re.search(r'Education Match:\s*\[?(\d+)%\]?', section_text, re.IGNORECASE)
-                                
-                                if skills_match: skills_percent = skills_match.group(1)
-                                if experience_match: experience_percent = experience_match.group(1)
-                                if education_match: education_percent = education_match.group(1)
-                                
-                            overall_score = overall_score_match.group(1) if overall_score_match else 'N/A'
-
-                            results_with_score.append({
-                                "jd_name": jd_name,
-                                "overall_score": overall_score,
-                                "numeric_score": int(overall_score) if overall_score.isdigit() else -1, # Added for sorting/ranking
-                                "skills_percent": skills_percent,
-                                "experience_percent": experience_percent, 
-                                "education_percent": education_percent, 
-                                "full_analysis": fit_output
-                            })
-                        except Exception as e:
-                            results_with_score.append({
-                                "jd_name": jd_name,
-                                "overall_score": "Error",
-                                "numeric_score": -1, # Set a low score for errors
-                                "skills_percent": "Error",
-                                "experience_percent": "Error", 
-                                "education_percent": "Error", 
-                                "full_analysis": f"Error running analysis for {jd_name}: {e}\n{traceback.format_exc()}"
-                            })
-                            
-                    # --- NEW RANKING LOGIC ---
-                    results_with_score.sort(key=lambda x: x['numeric_score'], reverse=True)
-                    
-                    current_rank = 1
-                    current_score = -1 
-                    
-                    for i, item in enumerate(results_with_score):
-                        if item['numeric_score'] > current_score:
-                            current_rank = i + 1
-                            current_score = item['numeric_score']
-                            
-                        item['rank'] = current_rank
-                        # Remove the temporary numeric_score field
-                        del item['numeric_score'] 
+                    try:
+                        fit_output = evaluate_jd_fit(jd_content, parsed_json) # Function used to call LLM/Mock LLM
                         
-                    st.session_state.candidate_match_results = results_with_score
-                    # --- END NEW RANKING LOGIC ---
-                    
-                    st.success("Batch analysis complete! See results below.")
-                    st.rerun() # Rerun to ensure the results display immediately
+                        # --- Extract Score Data from LLM/Mock Output using Regex ---
+                        overall_score_match = re.search(r'Overall Fit Score:\s*[^\d]*(\d+)\s*/10', fit_output, re.IGNORECASE)
+                        section_analysis_match = re.search(
+                            r'--- Section Match Analysis ---\s*(.*?)\s*--- Strengths/Matches ---', 
+                            fit_output, re.DOTALL
+                        )
 
+                        skills_percent, experience_percent, education_percent = 'N/A', 'N/A', 'N/A'
+                        
+                        if section_analysis_match:
+                            section_text = section_analysis_match.group(1)
+                            skills_match = re.search(r'Skills Match:\s*\[?(\d+)%\]?', section_text, re.IGNORECASE)
+                            experience_match = re.search(r'Experience Match:\s*\[?(\d+)%\]?', section_text, re.IGNORECASE)
+                            education_match = re.search(r'Education Match:\s*\[?(\d+)%\]?', section_text, re.IGNORECASE)
+                            
+                            if skills_match: skills_percent = skills_match.group(1)
+                            if experience_match: experience_percent = experience_match.group(1)
+                            if education_match: education_percent = education_match.group(1)
+                            
+                        overall_score = overall_score_match.group(1) if overall_score_match else 'N/A'
 
-        # 3. Display Results (UPDATED TO INCLUDE RANK)
-        if st.session_state.get('candidate_match_results'):
-            st.markdown("#### Match Results for Your Resume")
-            results_df = st.session_state.candidate_match_results
-            
-            display_data = []
-            for item in results_df:
-                # Find the full JD item to get the metadata
-                full_jd_item = next((jd for jd in st.session_state.candidate_jd_list if jd['name'] == item['jd_name']), {})
+                        results_with_score.append({
+                            "jd_name": jd_name,
+                            "overall_score": overall_score,
+                            "numeric_score": int(overall_score) if overall_score.isdigit() else -1, # Added for sorting/ranking
+                            "skills_percent": skills_percent,
+                            "experience_percent": experience_percent, 
+                            "education_percent": education_percent, 
+                            "full_analysis": fit_output
+                        })
+                    except Exception as e:
+                        results_with_score.append({
+                            "jd_name": jd_name,
+                            "overall_score": "Error",
+                            "numeric_score": -1, # Set a low score for errors
+                            "skills_percent": "Error",
+                            "experience_percent": "Error", 
+                            "education_percent": "Error", 
+                            "full_analysis": f"Error running analysis for {jd_name}: {e}\n{traceback.format_exc()}"
+                        })
+                        
+                # --- NEW RANKING LOGIC ---
+                results_with_score.sort(key=lambda x: x['numeric_score'], reverse=True)
                 
-                display_data.append({
-                    "Rank": item.get("rank", "N/A"),
-                    "Job Description (Ranked)": item["jd_name"].replace("--- Simulated JD for: ", ""),
-                    "Role": full_jd_item.get('role', 'N/A'), # Added Role
-                    "Job Type": full_jd_item.get('job_type', 'N/A'), # Added Job Type
-                    "Fit Score (out of 10)": item["overall_score"],
-                    "Skills (%)": item.get("skills_percent", "N/A"),
-                    "Experience (%)": item.get("experience_percent", "N/A"), 
-                    "Education (%)": item.get("education_percent", "N/A"), 
-                })
+                current_rank = 1
+                current_score = -1 
+                
+                for i, item in enumerate(results_with_score):
+                    if item['numeric_score'] > current_score:
+                        current_rank = i + 1
+                        current_score = item['numeric_score']
+                        
+                    item['rank'] = current_rank
+                    # Remove the temporary numeric_score field
+                    del item['numeric_score'] 
+                    
+                st.session_state.candidate_match_results = results_with_score
+                # --- END NEW RANKING LOGIC ---
+                
+                st.success("Batch analysis complete! See results below.")
+                st.rerun() # Rerun to ensure the results display immediately
 
-            st.dataframe(display_data, use_container_width=True)
 
-            st.markdown("##### Detailed Reports")
-            for item in results_df:
-                rank_display = f"Rank {item.get('rank', 'N/A')} | "
-                header_text = f"{rank_display}Report for **{item['jd_name'].replace('--- Simulated JD for: ', '')}** (Score: **{item['overall_score']}/10** | S: **{item.get('skills_percent', 'N/A')}%** | E: **{item.get('experience_percent', 'N/A')}%** | Edu: **{item.get('education_percent', 'N/A')}%**)"
-                with st.expander(header_text):
-                    # Display the full LLM analysis output
-                    st.code(item['full_analysis'], language='markdown')
+    # 3. Display Results (UPDATED TO INCLUDE RANK)
+    if st.session_state.get('candidate_match_results'):
+        st.markdown("#### Match Results for Your Resume")
+        results_df = st.session_state.candidate_match_results
+        
+        display_data = []
+        for item in results_df:
+            # Find the full JD item to get the metadata
+            full_jd_item = next((jd for jd in st.session_state.candidate_jd_list if jd['name'] == item['jd_name']), {})
+            
+            display_data.append({
+                "Rank": item.get("rank", "N/A"),
+                "Job Description (Ranked)": item["jd_name"].replace("--- Simulated JD for: ", ""),
+                "Role": full_jd_item.get('role', 'N/A'), # Added Role
+                "Job Type": full_jd_item.get('job_type', 'N/A'), # Added Job Type
+                "Fit Score (out of 10)": item["overall_score"],
+                "Skills (%)": item.get("skills_percent", "N/A"),
+                "Experience (%)": item.get("experience_percent", "N/A"), 
+                "Education (%)": item.get("education_percent", "N/A"), 
+            })
+
+        st.dataframe(display_data, use_container_width=True)
+
+        st.markdown("##### Detailed Reports")
+        for item in results_df:
+            rank_display = f"Rank {item.get('rank', 'N/A')} | "
+            header_text = f"{rank_display}Report for **{item['jd_name'].replace('--- Simulated JD for: ', '')}** (Score: **{item['overall_score']}/10** | S: **{item.get('skills_percent', 'N/A')}%** | E: **{item.get('experience_percent', 'N/A')}%** | Edu: **{item.get('education_percent', 'N/A')}%**)"
+            with st.expander(header_text):
+                # Display the full LLM analysis output
+                st.code(item['full_analysis'], language='markdown')
 
 
 # -------------------------
@@ -936,8 +1002,8 @@ def candidate_dashboard():
             
     st.markdown("---")
 
-    # --- Session State Initialization (CRITICAL FIX: Initialize parsed as empty dict) ---
-    if "parsed" not in st.session_state: st.session_state.parsed = {} # Initialized to {} instead of None
+    # --- Session State Initialization ---
+    if "parsed" not in st.session_state: st.session_state.parsed = {} 
     if "full_text" not in st.session_state: st.session_state.full_text = ""
     if "cv_form_data" not in st.session_state: st.session_state.cv_form_data = {} 
     
