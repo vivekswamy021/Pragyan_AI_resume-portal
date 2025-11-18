@@ -45,7 +45,7 @@ class MockGroqClient:
                     mock_questions = [
                         f"Q1: Tell me about a time you used **{section}** to solve a complex problem.",
                         f"Q2: Describe a project from your **{section}** experience where you had to pivot your approach.",
-                        f"Q3: What are the key skills you developed in the **{section}** area, and how would they benefit this role?", # CORRECTED SYNTAX: Removed extra 'f'
+                        f"Q3: What are the key skills you developed in the **{section}** area, and how would they benefit this role?",
                         f"Q4: Give an example of technical debt you encountered related to **{section}** and how you resolved it.",
                         f"Q5: How do you keep up to date with the latest trends in **{section}**?"
                     ]
@@ -595,7 +595,7 @@ def evaluate_jd_fit(job_description, parsed_json):
     if parsed_json.get('error') is not None: 
          return f"Cannot evaluate due to resume parsing errors: {parsed_json['error']}"
 
-    if isinstance(client, MockGroqClient) and not GROQ_API_KEY:
+    if isinstance(client, MockGroqClient) or not GROQ_API_KEY:
          response = client.chat().create(model=GROQ_MODEL, messages=[{"role": "user", "content": f"Evaluate how well the following resume content matches the provided job description: {job_description}"}])
          return response.choices[0].message.content.strip()
 
@@ -695,7 +695,7 @@ def generate_cover_letter_llm(jd_content, parsed_json, preferred_style="Standard
     {jd_content}
     """
     
-    if isinstance(client, MockGroqClient) and not GROQ_API_KEY:
+    if isinstance(client, MockGroqClient) or not GROQ_API_KEY:
          response = client.chat().create(model=GROQ_MODEL, messages=[{"role": "user", "content": prompt}])
          return response.choices[0].message.content.strip()
 
@@ -1113,8 +1113,6 @@ def jd_batch_match_tab():
     """The Batch JD Match tab logic."""
     st.header("🎯 Batch JD Match: Best Matches")
     st.markdown("Compare your current resume against all saved job descriptions.")
-    # (Content for this tab omitted for brevity but present in full code)
-    # ... [Omitted for brevity - same content as previous full code] ...
     
     # Determine if a resume/CV is ready
     is_resume_parsed = (
@@ -1124,7 +1122,8 @@ def jd_batch_match_tab():
     )
     
     # Check if we are running in Mock Mode
-    is_mock_mode = isinstance(client, MockGroqClient) and not GROQ_API_KEY
+    is_mock_mode = isinstance(client, MockGroqClient) or not GROQ_API_KEY # Check for both MockClient instance or missing key
+
     
     if not is_resume_parsed:
         st.warning("⚠️ Please **upload and parse your resume** in the 'Resume Parsing' tab first.")
@@ -1135,13 +1134,11 @@ def jd_batch_match_tab():
     elif not st.session_state.candidate_jd_list:
         st.error("❌ Please **add Job Descriptions** in the 'JD Management' tab before running batch analysis.")
         
-    elif not GROQ_API_KEY and not is_mock_mode:
-        st.error("Cannot use JD Match: GROQ_API_KEY is not configured.")
-        
     elif is_mock_mode:
         st.info("ℹ️ Running in **Mock LLM Mode** for fit evaluation. Results are simulated for consistency, but a valid GROQ_API_KEY is recommended for real AI analysis.")
         
     else:
+        # Check for actual client status only if not already in mock mode due to missing key
         if not hasattr(client, 'client_ready') or not client.client_ready:
             st.warning("⚠️ LLM client setup failed or key is missing. Match analysis may not be accurate or available.")
 
@@ -1267,8 +1264,6 @@ def jd_batch_match_tab():
 
 def filter_jd_tab_content():
     """Filter JD Tab."""
-    # (Content for this tab omitted for brevity but present in full code)
-    # ... [Omitted for brevity - same content as previous full code] ...
     st.header("🔍 Filter Job Descriptions by Criteria")
     st.markdown("Use the filters below to narrow down your saved Job Descriptions.")
 
@@ -1400,8 +1395,6 @@ def filter_jd_tab_content():
 
 def parsed_data_tab():
     """Parsed Data View Tab."""
-    # (Content for this tab omitted for brevity but present in full code)
-    # ... [Omitted for brevity - same content as previous full code] ...
     st.header("✨ Parsed Resume Data View")
     st.markdown("This tab displays the loaded candidate data and provides download options.")
     st.markdown("---")
@@ -1506,8 +1499,6 @@ def parsed_data_tab():
 
 def generate_cover_letter_tab():
     """Cover Letter Tab."""
-    # (Content for this tab omitted for brevity but present in full code)
-    # ... [Omitted for brevity - same content as previous full code] ...
     st.header("✉️ Generate Cover Letter")
     st.markdown("Create a customized cover letter for a specific Job Description using your parsed resume data.")
     st.markdown("---")
@@ -1644,7 +1635,7 @@ def interview_preparation_tab():
     
     # Filter keys for relevant sections
     section_options = [k.replace('_', ' ').title() for k in parsed_keys if k not in ['name', 'email', 'phone', 'error', 'linkedin', 'github', 'personal_details']]
-    section_options = sorted(section_options)
+    section_options = sorted(list(set(section_options))) # Ensure uniqueness and sort
     
     if not section_options:
         st.error("Could not find relevant sections (Experience, Skills, Education, etc.) in the parsed resume for question generation.")
@@ -1654,11 +1645,16 @@ def interview_preparation_tab():
     col_select, col_button = st.columns([2, 1])
     
     with col_select:
+        # Use a list comprehension to ensure only options present in section_options are passed
+        default_index = 0
+        if st.session_state.get('interview_section_select') in section_options:
+            default_index = section_options.index(st.session_state['interview_section_select'])
+            
         selected_section_display = st.selectbox(
             "Select Resume Section to Target Questions",
             options=section_options,
             key="interview_section_select",
-            index=0
+            index=default_index
         )
         # Convert display name back to JSON key
         selected_section_key = selected_section_display.lower().replace(' ', '_')
@@ -1673,10 +1669,11 @@ def interview_preparation_tab():
             if isinstance(resume_content_str, list):
                 resume_content_str = "\n".join(resume_content_str)
             
-            if "Content not found" in resume_content_str:
+            if "Content not found" in resume_content_str or not resume_content_str.strip():
                  st.error(f"Cannot generate questions: '{selected_section_display}' content is empty or could not be found.")
                  return
                  
+            # Reset state for a new session
             st.session_state.interview_questions = []
             st.session_state.interview_section = selected_section_display # Store section name
 
@@ -1711,6 +1708,7 @@ def interview_preparation_tab():
                 default_answer = q_data.get('answer', '')
                 
                 # Text area for answer input/recording
+                # The st.session_state[answer_key] is updated by the text_area on user input
                 st.session_state[answer_key] = st.text_area(
                     "Your Recorded Answer (Type/Paste)", 
                     value=default_answer,
@@ -1719,7 +1717,6 @@ def interview_preparation_tab():
                 )
                 
                 # Update the session state list with the potentially edited answer *before* evaluation button is pressed
-                # This ensures the answer persists if the user navigates away or refreshes partially.
                 st.session_state.interview_questions[i]['answer'] = st.session_state[answer_key]
                 
                 col_eval, col_spacer = st.columns([1, 2])
@@ -1769,8 +1766,6 @@ def interview_preparation_tab():
 
 def qa_on_resume(question):
     """Chatbot for Resume (Q&A) using LLM."""
-    # (Content for this function omitted for brevity but present in full code)
-    # ... [Omitted for brevity - same content as previous full code] ...
     global client, GROQ_MODEL, GROQ_API_KEY
     
     if not GROQ_API_KEY and not isinstance(client, MockGroqClient):
@@ -1803,8 +1798,6 @@ def qa_on_resume(question):
 
 def qa_on_jd(question, jd_content):
     """Chatbot for Job Description (Q&A) using LLM."""
-    # (Content for this function omitted for brevity but present in full code)
-    # ... [Omitted for brevity - same content as previous full code] ...
     global client, GROQ_MODEL, GROQ_API_KEY
     
     if not GROQ_API_KEY and not isinstance(client, MockGroqClient):
@@ -1957,6 +1950,7 @@ def candidate_dashboard():
     st.markdown("---")
 
     # --- Session State Initialization ---
+    # Robust initialization to prevent TypeErrors on access before first run
     if "parsed" not in st.session_state: st.session_state.parsed = {} 
     if "full_text" not in st.session_state: st.session_state.full_text = ""
     if "excel_data" not in st.session_state: st.session_state.excel_data = None
@@ -1971,11 +1965,12 @@ def candidate_dashboard():
     if 'generated_cover_letter' not in st.session_state: st.session_state.generated_cover_letter = "" 
     if 'cl_jd_name' not in st.session_state: st.session_state.cl_jd_name = "" 
     
-    # --- NEW: Interview Preparation States ---
-    if 'interview_questions' not in st.session_state: st.session_state.interview_questions = [] # List of dicts: {question, answer, evaluation, evaluated}
+    # --- Interview Preparation States ---
+    if 'interview_questions' not in st.session_state: st.session_state.interview_questions = [] 
     if 'interview_section' not in st.session_state: st.session_state.interview_section = ""
-    # --- END NEW ---
-    
+    if 'interview_section_select' not in st.session_state: st.session_state.interview_section_select = None # For selectbox default index lookup
+
+    # --- Chatbot States ---
     if "resume_chatbot_history" not in st.session_state: st.session_state.resume_chatbot_history = []
     if "jd_chatbot_history" not in st.session_state: st.session_state.jd_chatbot_history = {} 
 
@@ -2003,7 +1998,7 @@ def candidate_dashboard():
         generate_cover_letter_tab() 
         
     with tab_interview_prep:
-        interview_preparation_tab() # New function call
+        interview_preparation_tab() 
         
     with tab_chatbot:
         chatbot_tab_content()
