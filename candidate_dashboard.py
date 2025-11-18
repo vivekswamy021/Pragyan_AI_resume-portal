@@ -377,19 +377,29 @@ def cv_management_tab_content():
         "structured_education": [] 
     }
     
-    if "cv_form_data" not in st.session_state:
+    # *** CRITICAL FIX: Ensure cv_form_data is correctly initialized from parsed data ***
+    if "cv_form_data" not in st.session_state or st.session_state.cv_form_data.get('name') == "":
         if st.session_state.get('parsed', {}).get('name') and st.session_state.parsed.get('name') != "":
+            # Load from successful parse
             st.session_state.cv_form_data = st.session_state.parsed.copy()
-            if 'structured_experience' not in st.session_state.cv_form_data:
-                st.session_state.cv_form_data['structured_experience'] = st.session_state.cv_form_data.get('experience', []) if all(isinstance(i, dict) for i in st.session_state.cv_form_data.get('experience', [])) else [] 
-            if 'structured_certifications' not in st.session_state.cv_form_data:
-                st.session_state.cv_form_data['structured_certifications'] = st.session_state.cv_form_data.get('certifications', []) if all(isinstance(i, dict) for i in st.session_state.cv_form_data.get('certifications', [])) else []
-            if 'structured_education' not in st.session_state.cv_form_data:
-                st.session_state.cv_form_data['structured_education'] = st.session_state.cv_form_data.get('education', []) if all(isinstance(i, dict) for i in st.session_state.cv_form_data.get('education', [])) else []
+            
+            # Ensure structured lists exist, prioritizing the explicit structured keys if available
+            st.session_state.cv_form_data['structured_experience'] = st.session_state.cv_form_data.get('structured_experience', st.session_state.cv_form_data.get('experience', []))
+            st.session_state.cv_form_data['structured_certifications'] = st.session_state.cv_form_data.get('structured_certifications', st.session_state.cv_form_data.get('certifications', []))
+            st.session_state.cv_form_data['structured_education'] = st.session_state.cv_form_data.get('structured_education', st.session_state.cv_form_data.get('education', []))
+            
+            # Ensure the structure is a list of dicts/lists
+            if not all(isinstance(i, dict) for i in st.session_state.cv_form_data['structured_experience']):
+                st.session_state.cv_form_data['structured_experience'] = []
+            if not all(isinstance(i, dict) for i in st.session_state.cv_form_data['structured_certifications']):
+                st.session_state.cv_form_data['structured_certifications'] = []
+            if not all(isinstance(i, dict) for i in st.session_state.cv_form_data['structured_education']):
+                st.session_state.cv_form_data['structured_education'] = []
         else:
+            # Load default empty data
             st.session_state.cv_form_data = default_parsed
             
-    # CRITICAL: Ensure lists are initialized correctly
+    # CRITICAL: Ensure lists are initialized correctly for dynamic forms
     if 'structured_experience' not in st.session_state.cv_form_data or not isinstance(st.session_state.cv_form_data['structured_experience'], list):
          st.session_state.cv_form_data['structured_experience'] = []
     if 'structured_certifications' not in st.session_state.cv_form_data or not isinstance(st.session_state.cv_form_data['structured_certifications'], list):
@@ -931,11 +941,15 @@ def cv_management_tab_content():
     st.markdown("---")
     st.subheader("9. Loaded CV Data Preview and Download")
     
+    # *** CRITICAL FIX: Check the main parsed state for display ***
     if st.session_state.get('parsed', {}).get('name') and st.session_state.parsed.get('name') != "":
+        
+        # Use the data that was loaded/generated to ensure consistency
+        data_to_display = st.session_state.parsed.copy()
         
         EXCLUDE_KEYS_PREVIEW = ["structured_experience", "structured_certifications", "structured_education"]
         filled_data_for_preview = {
-            k: v for k, v in st.session_state.parsed.items() 
+            k: v for k, v in data_to_display.items() 
             if v and k not in EXCLUDE_KEYS_PREVIEW and (isinstance(v, str) and v.strip() or isinstance(v, list) and v)
         }
         
@@ -1293,7 +1307,13 @@ def candidate_dashboard():
                             st.session_state.full_text = result['full_text']
                             st.session_state.excel_data = result['excel_data'] 
                             st.session_state.parsed['name'] = result['name'] 
+                            
+                            # *** CRITICAL FIX: Ensure form data is updated after parsing for immediate display ***
                             st.session_state.cv_form_data = st.session_state.parsed.copy() 
+                            st.session_state.cv_form_data['structured_experience'] = st.session_state.parsed.get('experience', [])
+                            st.session_state.cv_form_data['structured_certifications'] = st.session_state.parsed.get('certifications', [])
+                            st.session_state.cv_form_data['structured_education'] = st.session_state.parsed.get('education', [])
+                            
                             clear_interview_state()
                             st.success(f"✅ Successfully loaded and parsed **{result['name']}**.")
                             st.info("View, edit, and download the parsed data in the **CV Management** tab.") 
@@ -1332,7 +1352,13 @@ def candidate_dashboard():
                             st.session_state.full_text = result['full_text']
                             st.session_state.excel_data = result['excel_data'] 
                             st.session_state.parsed['name'] = result['name'] 
+                            
+                            # *** CRITICAL FIX: Ensure form data is updated after parsing for immediate display ***
                             st.session_state.cv_form_data = st.session_state.parsed.copy() 
+                            st.session_state.cv_form_data['structured_experience'] = st.session_state.parsed.get('experience', [])
+                            st.session_state.cv_form_data['structured_certifications'] = st.session_state.parsed.get('certifications', [])
+                            st.session_state.cv_form_data['structured_education'] = st.session_state.parsed.get('education', [])
+                            
                             clear_interview_state()
                             st.success(f"✅ Successfully loaded and parsed **{result['name']}**.")
                             st.info("View, edit, and download the parsed data in the **CV Management** tab.") 
