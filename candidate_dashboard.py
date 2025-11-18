@@ -251,6 +251,7 @@ def parse_resume_with_llm(text):
     """
     
     def get_fallback_name():
+        # Using a consistent fallback name for error handling
         return "Vivek Swamy" 
 
     # 1. Handle Pre-flight errors (e.g., failed extraction)
@@ -395,7 +396,8 @@ def parse_and_store_resume(content_source, file_name_key, source_type):
             if v and k not in ['error']:
                 compiled_text += f"## {k.replace('_', ' ').title()}\n\n"
                 if isinstance(v, list):
-                    compiled_text += "\n".join([f"* {item}" for item in v]) + "\n\n"
+                    # Ensure all items in the list are strings before joining
+                    compiled_text += "\n".join([str(item) for item in v if item is not None]) + "\n\n"
                 else:
                     compiled_text += str(v) + "\n\n"
         
@@ -426,7 +428,8 @@ def parse_and_store_resume(content_source, file_name_key, source_type):
         if v and k not in ['error']:
             compiled_text += f"## {k.replace('_', ' ').title()}\n\n"
             if isinstance(v, list):
-                compiled_text += "\n".join([f"* {item}" for item in v]) + "\n\n"
+                # Ensure all items in the list are strings before joining
+                compiled_text += "\n".join([str(item) for item in v if item is not None]) + "\n\n"
             else:
                 compiled_text += str(v) + "\n\n"
 
@@ -806,7 +809,7 @@ def generate_cv_form():
     st.markdown("Fill out the form below to create a structured CV/Resume, which will be loaded into the dashboard for analysis.")
 
     # Initialize the form state with current parsed data if available, or empty defaults
-    if 'parsed' in st.session_state and st.session_state.parsed.get('name'):
+    if 'parsed' in st.session_state and st.session_state.parsed.get('name') and st.session_state.parsed.get('error') is None:
         initial_data = st.session_state.parsed
     else:
         # Default empty structure matching the LLM output format
@@ -815,6 +818,19 @@ def generate_cv_form():
             "personal_details": "", "skills": [], "education": [], "experience": [],
             "certifications": [], "projects": [], "strength": []
         }
+
+    # --- FIX START: Robust list_to_text function ---
+    def list_to_text(data_list):
+        """Converts a list (potentially containing non-string items) into a multiline string."""
+        if not data_list:
+            return ""
+        if isinstance(data_list, list):
+            # Crucial: Ensure every item in the list is converted to a string before joining
+            return "\n".join([str(item).strip() for item in data_list if item is not None])
+        # Fallback for unexpected non-list, non-empty data
+        return str(data_list)
+    # --- FIX END ---
+    
 
     with st.form("cv_generation_form"):
         st.markdown("### 1. Personal Details")
@@ -830,12 +846,6 @@ def generate_cv_form():
             
         st.markdown("---")
         st.markdown("### 2. Core Sections (Separate items by a new line or comma)")
-
-        # Convert list of items to multiline text for easy form input
-        def list_to_text(data_list):
-            if isinstance(data_list, list):
-                return "\n".join(data_list)
-            return str(data_list) if data_list else ""
 
         skills = st.text_area(
             "Skills (e.g., Python, AWS, SQL, Docker - one skill or tool per line)",
@@ -1476,7 +1486,7 @@ def parsed_data_tab():
             
             if st.session_state.excel_data:
                  st.markdown("### Extracted Spreadsheet Data (if applicable)")
-                 st.json(st.session_data.excel_data)
+                 st.json(st.session_state.excel_data) # Corrected syntax here
                  
             st.markdown("---")
             st.markdown("##### Download Markdown Data")
