@@ -1056,54 +1056,33 @@ def jd_batch_match_tab():
                 st.session_state.candidate_match_results = results_with_score
                 # --- END NEW RANKING LOGIC ---
                 
-                st.success("Batch analysis complete! See results below.")
+                st.success("Batch analysis complete! Results are stored and ready for display elsewhere.")
                 st.rerun() 
 
 
-    # 3. Display Results (UPDATED TO INCLUDE RANK)
-    if st.session_state.get('candidate_match_results'):
-        st.markdown("#### Match Results for Your Resume")
-        results_df = st.session_state.candidate_match_results
+    # 3. Display Results (REMOVED SECTION)
+    # The following code block has been removed as per the user's request:
+    # --------------------------------------------------------------------------------
+    # if st.session_state.get('candidate_match_results'):
+    #     st.markdown("#### Match Results for Your Resume")
+    #     results_df = st.session_state.candidate_match_results
         
-        display_data = []
-        for item in results_df:
-            full_jd_item = next((jd for jd in st.session_state.candidate_jd_list if jd['name'] == item['jd_name']), {})
-            
-            # Simple fix to make the role name more readable for display if it's the mock-extracted role
-            role_display = full_jd_item.get('role', 'N/A').replace("/ML Engineer", " Engineer")
-            
-            # Clean up score display based on error type
-            overall_score_display = item["overall_score"]
-            if overall_score_display.startswith("Error"):
-                overall_score_display = "Error" 
-
-            display_data.append({
-                "Rank": item.get("rank", "N/A"),
-                "Job Description (Ranked)": item["jd_name"].replace("--- Simulated JD for: ", ""),
-                "Role": role_display, 
-                "Job Type": full_jd_item.get('job_type', 'N/A'), 
-                "Fit Score (out of 10)": overall_score_display,
-                "Skills (%)": item.get("skills_percent", "N/A"),
-                "Experience (%)": item.get("experience_percent", "N/A"), 
-                "Education (%)": item.get("education_percent", "N/A"), 
-            })
-
-        st.dataframe(display_data, use_container_width=True)
-
-        st.markdown("##### Detailed Reports")
-        for item in results_df:
-            rank_display = f"Rank {item.get('rank', 'N/A')} | "
-            
-            header_score = item['overall_score']
-            if header_score.startswith("Error"):
-                 header_score = "Evaluation Error"
-                 
-            # Ensure the full analysis is displayed with markdown formatting
-            header_text = f"{rank_display}Report for **{item['jd_name'].replace('--- Simulated JD for: ', '')}** (Score: **{header_score}** | S: **{item.get('skills_percent', 'N/A')}%** | E: **{item.get('experience_percent', 'N/A')}%** | Edu: **{item.get('education_percent', 'N/A')}%**)"
-            with st.expander(header_text):
-                # Use st.code to display the LLM output with good formatting
-                st.code(item['full_analysis'], language='markdown')
-
+    #     display_data = []
+    #     # [Code to process results_df for display_data...]
+    #     
+    #     st.dataframe(display_data, use_container_width=True)
+    #
+    #     st.markdown("##### Detailed Reports")
+    #     # [Code to display detailed reports in expanders...]
+    # --------------------------------------------------------------------------------
+    
+    # Placeholder for the removed section:
+    if st.session_state.get('candidate_match_results'):
+         st.markdown("---")
+         st.info(f"Match analysis results for **{len(st.session_state.candidate_match_results)}** JDs are complete and stored internally.")
+    else:
+         st.markdown("---")
+         st.info("Run the match analysis above to evaluate your resume against the selected Job Descriptions.")
 
 # --- New Filter JD Tab Function ---
 
