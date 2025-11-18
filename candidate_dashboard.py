@@ -37,35 +37,47 @@ class MockGroqClient:
             def create(self, **kwargs):
                 prompt_content = kwargs.get('messages', [{}])[0].get('content', '')
                 
-                # --- Specific Mock Logic for Interview Prep ---
-                if "Generate 5 interview questions specifically targeting the" in prompt_content:
+                # --- Specific Mock Logic for Interview Prep (ADAPTED FOR NEW FLOW) ---
+                if "Generate a list of interview questions" in prompt_content:
                     section_match = re.search(r'targeting the ([\w\s]+) section', prompt_content)
                     section = section_match.group(1).strip() if section_match else "General"
                     
-                    mock_questions = [
-                        f"Q1: Tell me about a time you used **{section}** to solve a complex problem.",
-                        f"Q2: Describe a project from your **{section}** experience where you had to pivot your approach.",
-                        f"Q3: What are the key skills you developed in the **{section}** area, and how would they benefit this role?", # CORRECTED SYNTAX: Removed extra 'f'
-                        f"Q4: Give an example of technical debt you encountered related to **{section}** and how you resolved it.",
-                        f"Q5: How do you keep up to date with the latest trends in **{section}**?"
-                    ]
+                    mock_questions_raw = f"""
+                    [Basic/Screening]
+                    Q1: Tell me about your most recent project related to **{section}**.
                     
-                    # Return as a JSON string list as expected by the real LLM function
-                    return type('MockResponse', (object,), {'choices': [type('Choice', (object,), {'message': type('Message', (object,), {'content': json.dumps(mock_questions)})})()]})
+                    [Intermediate/Technical]
+                    Q2: Describe a complex technical challenge you overcame in the **{section}** area.
+                    Q3: How do you measure the success of your work in **{section}**?
+                    
+                    [Advanced/Behavioral]
+                    Q4: Give an example of technical debt you encountered related to **{section}** and how you resolved it.
+                    Q5: How do you keep up to date with the latest trends in **{section}**?
+                    """
+                    # Return the raw text as expected by the new parser logic
+                    return type('MockResponse', (object,), {'choices': [type('Choice', (object,), {'message': type('Message', (object,), {'content': mock_questions_raw})})()]})
 
-                elif "Evaluate the following candidate's answer" in prompt_content:
+                elif "Evaluate the candidate's answers to the following questions" in prompt_content:
                     # Simple mock evaluation logic
-                    if "complex problem" in prompt_content or "pivot" in prompt_content:
+                    if "Q2" in prompt_content and "complex technical challenge" in prompt_content:
                         score = 8
                         feedback = "Excellent structure using the STAR method (simulated). You clearly articulated the situation and your actions. **Focus on quantifying the results.**"
                     else:
                         score = 6
-                        feedback = "Good technical detail, but the answer was a bit generic (simulated). Try to connect your skills directly to the business impact."
+                        feedback = "Good technical detail, but the answers were a bit generic (simulated). Try to connect your skills directly to the business impact."
 
                     mock_evaluation = f"""
-                    --- Evaluation Results ---
-                    **Score:** {score}/10
-                    **Feedback:** {feedback}
+                    --- AI Evaluation Report ---
+                    
+                    **Overall Score:** {score}/10
+                    **Summary:** The candidate provided decent technical background but lacked deep, quantifiable examples for most questions. The answer to Q2 was strong.
+                    
+                    **Q1 Feedback:** {feedback}
+                    
+                    **Q2 Feedback:** Strong response. Excellent use of technical terms and process.
+                    
+                    **Q3 Feedback:** Answer was too theoretical. Need a real-world project example.
+                    
                     **Next Steps:** Review the job description and prepare more quantifiable achievements related to this area.
                     """
                     return type('MockResponse', (object,), {'choices': [type('Choice', (object,), {'message': type('Message', (object,), {'content': mock_evaluation})})()]})
@@ -226,16 +238,15 @@ except (ImportError, ValueError, NameError) as e:
 # --- Utility Functions ---
 
 def clear_interview_state():
-    """Clears all session state variables related to match sessions."""
+    """Clears all session state variables related to interview preparation."""
     # Retain the Q&A history states, only clear match-specific states
+    if 'iq_output' in st.session_state: del st.session_state['iq_output']
+    if 'interview_qa' in st.session_state: del st.session_state['interview_qa']
     if 'evaluation_report' in st.session_state: del st.session_state['evaluation_report']
+    # Clear other match states for good measure
     if 'candidate_match_results' in st.session_state: st.session_state.candidate_match_results = []
     if 'generated_cover_letter' in st.session_state: del st.session_state['generated_cover_letter'] 
-    
-    # --- New: Clear Interview Prep State ---
-    if 'interview_questions' in st.session_state: del st.session_state['interview_questions']
-    if 'interview_section' in st.session_state: del st.session_state['interview_section']
-    # --- End New ---
+
 
 def get_file_type(file_name):
     """Identifies the file type based on its extension, handling common text formats."""
@@ -309,7 +320,6 @@ def extract_content(file_type, file_content_bytes, file_name):
 def parse_resume_with_llm(text):
     """
     Sends resume text to the LLM for structured information extraction.
-    (This function remains unchanged from previous versions, included for completeness)
     """
     
     def get_fallback_name():
@@ -408,9 +418,7 @@ def parse_resume_with_llm(text):
 
 # Updated signature to match the request
 def parse_and_store_resume(content_source, file_name_key, source_type):
-    """Handles extraction, parsing, and storage of CV data from either a file or pasted text.
-    (This function remains unchanged from previous versions, included for completeness)
-    """
+    """Handles extraction, parsing, and storage of CV data from either a file or pasted text."""
     extracted_text = ""
     excel_data = None
     file_name = "Pasted_Resume"
@@ -461,7 +469,6 @@ def parse_and_store_resume(content_source, file_name_key, source_type):
 def get_download_link(data, filename, file_format, title="Parsed Data"):
     """
     Generates a base64 encoded download link for the given data and format.
-    (This function remains unchanged from previous versions, included for completeness)
     """
     mime_type = "application/octet-stream"
     
@@ -510,9 +517,7 @@ def get_download_link(data, filename, file_format, title="Parsed Data"):
     return f"data:{mime_type};base64,{b64}"
 
 def render_download_button(data_uri, filename, label, color):
-    """Renders an HTML button that triggers a file download.
-    (This function remains unchanged from previous versions, included for completeness)
-    """
+    """Renders an HTML button that triggers a file download."""
     
     if color == 'json':
         bg_color = "#4CAF50" # Green
@@ -561,7 +566,6 @@ def render_download_button(data_uri, filename, label, color):
 @st.cache_data(show_spinner="Analyzing JD for metadata...")
 def extract_jd_metadata(jd_text):
     """Mocks the extraction of key metadata (Role, Skills, Job Type) from JD text using LLM."""
-    # (This function remains unchanged from previous versions, included for completeness)
     if jd_text.startswith("[Error"):
         return {"role": "Error", "key_skills": ["Error"], "job_type": "Error"}
     
@@ -588,7 +592,6 @@ def evaluate_jd_fit(job_description, parsed_json):
     """
     Evaluates how well a resume fits a given job description, 
     including section-wise scores, by calling the Groq LLM API.
-    (This function remains unchanged from previous versions, included for completeness)
     """
     global client, GROQ_MODEL, GROQ_API_KEY
     
@@ -655,7 +658,6 @@ def evaluate_jd_fit(job_description, parsed_json):
 def generate_cover_letter_llm(jd_content, parsed_json, preferred_style="Standard"):
     """
     Generates a cover letter based on JD and parsed resume data.
-    (This function remains unchanged from previous versions, included for completeness)
     """
     global client, GROQ_MODEL, GROQ_API_KEY
     
@@ -681,7 +683,7 @@ def generate_cover_letter_llm(jd_content, parsed_json, preferred_style="Standard
     2.  **Structure:** Use standard cover letter format.
     3.  **Customization:** Directly reference the skills and experience listed in the candidate's resume that match the job description's requirements.
     4.  **Length:** Keep it brief, no more than four paragraphs.
-    5.  **Output Format:** Output the letter text only, using double newlines for paragraph separation. Include placeholders like [Date], [Hiring Manager Name/Title, if known], and [Company Name] where necessary. Use bold formatting for the job title.
+    5.  **Output Format:** Output the letter text only, using double newlines for paragraph breaks. Include placeholders like [Date], [Hiring Manager Name/Title, if known], and [Company Name] where necessary. Use bold formatting for the job title.
     
     --- Candidate Information ---
     Candidate Name: {candidate_name}
@@ -710,24 +712,38 @@ def generate_cover_letter_llm(jd_content, parsed_json, preferred_style="Standard
         error_output = f"AI Generation Error: Failed to connect or receive response from LLM. Error: {e}\n{traceback.format_exc()}"
         return error_output
 
-# --- NEW LLM Functions for Interview Preparation ---
+# --- ADAPTED LLM Functions for Interview Preparation (Renamed) ---
 
-def generate_interview_questions_llm(resume_content_str, target_section):
+def generate_interview_questions(parsed_json, target_section_display):
     """
-    Generates 5 interview questions targeting a specific resume section.
+    Generates interview questions targeting a specific resume section.
+    The output is a raw string formatted for easy parsing in the Streamlit tab.
     """
     global client, GROQ_MODEL
     
+    target_section_key = target_section_display.lower().replace(' ', '_')
+    resume_content_str = parsed_json.get(target_section_key, "Content not found in this section.")
+    
+    if isinstance(resume_content_str, list):
+        resume_content_str = "\n".join(resume_content_str)
+        
+    if "Content not found" in resume_content_str:
+        return f"Error: Content for section '{target_section_display}' is empty in the parsed resume."
+
     prompt = f"""
     You are an expert technical interviewer. Based ONLY on the following candidate resume information, 
-    generate **exactly 5 interview questions** specifically targeting the **{target_section}** section.
+    generate a list of interview questions specifically targeting the **{target_section_display}** section.
     
     **Instructions:**
-    1. Focus on behavioral and deep technical questions related to the content in that section.
-    2. The questions should be professional and suitable for a job interview.
-    3. The output must be a strict JSON array of strings, where each string is one question.
+    1. Generate 5-7 questions across **3 difficulty levels**: [Basic/Screening], [Intermediate/Technical], and [Advanced/Behavioral].
+    2. The output must be a raw string. Start a new line for each question.
+    3. Use the following strict format for your output:
+    [Level Name]
+    Q1: Question text...
+    Q2: Question text...
+    ...
     
-    --- Candidate Resume Content for Section: {target_section} ---
+    --- Candidate Resume Content for Section: {target_section_display} ---
     {resume_content_str}
     
     ---
@@ -735,86 +751,75 @@ def generate_interview_questions_llm(resume_content_str, target_section):
     """
 
     try:
-        response = client.chat.completions.create(
-            model=GROQ_MODEL,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.8,
-            response_format={"type": "json_object"}
-        )
-        content = response.choices[0].message.content.strip()
-        
-        # Robustly extract JSON array and parse it
-        json_match = re.search(r'\[.*\]', content, re.DOTALL)
-        if json_match:
-            json_str = json_match.group(0).strip()
-            # Clean up markdown fences if present
-            if json_str.startswith('```json'):
-                json_str = json_str[len('```json'):]
-            if json_str.endswith('```'):
-                json_str = json_str[:-len('```')]
-            json_str = json_str.strip()
-            
-            questions = json.loads(json_str)
-            if isinstance(questions, list) and len(questions) > 0:
-                # Store questions as a list of dictionaries with empty answers/evals
-                return [{
-                    "question": q, 
-                    "answer": "", 
-                    "evaluation": "",
-                    "evaluated": False
-                } for q in questions]
-            else:
-                raise ValueError("LLM returned valid JSON but not a list of questions.")
+        if isinstance(client, MockGroqClient) and not GROQ_API_KEY:
+             response = client.chat().create(model=GROQ_MODEL, messages=[{"role": "user", "content": prompt}])
         else:
-            raise json.JSONDecodeError("Could not isolate a valid JSON array from LLM response.", content, 0)
+            response = client.chat.completions.create(
+                model=GROQ_MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.8
+            )
+        return response.choices[0].message.content.strip()
             
     except Exception as e:
         error_msg = f"AI Question Generation Error: {e}\nTrace: {traceback.format_exc()}"
         st.error(error_msg)
-        return [{"question": "Error generating questions. See logs.", "answer": "", "evaluation": error_msg, "evaluated": True}]
+        return f"Error generating questions: {error_msg}"
 
 
-def evaluate_interview_answer_llm(question, candidate_answer, resume_context):
+def evaluate_interview_answers(qa_list, parsed_json):
     """
-    Evaluates a candidate's recorded answer based on the question and resume context.
+    Evaluates a list of candidate's recorded answers based on the questions and resume context.
+    The output is a full markdown report.
     """
     global client, GROQ_MODEL
+    
+    # Format Q&A for LLM
+    qa_exchange = "\n\n--- Candidate Answers ---\n\n"
+    for i, item in enumerate(qa_list):
+        qa_exchange += f"Q{i+1} ({item['level']}): {item['question'].replace(f'({item['level']})', '').strip()}\n"
+        qa_exchange += f"Answer {i+1}: {item['answer']}\n"
+        qa_exchange += "---"
+
+    # Get the full text of the resume for context
+    resume_context = st.session_state.full_text 
 
     prompt = f"""
-    You are an expert interviewer evaluating a candidate's answer.
+    You are an expert interviewer evaluating a candidate's recorded answers.
     
-    **Evaluation Criteria:**
-    1.  **Relevance:** Does the answer address the question?
-    2.  **Clarity & Structure:** Is the answer easy to follow (e.g., did they use STAR method for behavioral questions)?
-    3.  **Technical Depth (if applicable):** Does the answer show real expertise/experience?
-    4.  **Consistency:** Is the answer consistent with the resume context?
+    **Evaluation Task:**
+    Evaluate the candidate's answers based on the provided questions and their resume context.
     
-    **Instructions:**
-    1.  Provide an overall score out of 10.
-    2.  Give actionable, constructive feedback for improvement.
+    **Instructions for Report:**
+    1.  Provide an **Overall Score (X/10)** at the beginning of the report.
+    2.  Give a **Summary** of the candidate's performance (e.g., strength in technical depth, weakness in behavioral structure).
+    3.  For **each question** answered, provide specific, actionable, constructive feedback. Use markdown headings (e.g., **Q1 Feedback**).
+    4.  Ensure the report is professional and directly addresses consistency with the resume context.
     
     --- Resume Context ---
     {resume_context}
     
     --- Interview Exchange ---
-    **Question:** {question}
-    **Candidate Answer:** {candidate_answer}
+    {qa_exchange}
     
     ---
-    **Output the evaluation clearly using bold markdown for structure.**
+    **Output the evaluation report clearly using markdown.**
     """
 
     try:
-        response = client.chat.completions.create(
-            model=GROQ_MODEL,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.5
-        )
+        if isinstance(client, MockGroqClient) and not GROQ_API_KEY:
+             response = client.chat().create(model=GROQ_MODEL, messages=[{"role": "user", "content": prompt}])
+        else:
+            response = client.chat.completions.create(
+                model=GROQ_MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.5
+            )
         return response.choices[0].message.content.strip()
     except Exception as e:
         return f"Evaluation Error: Failed to connect to LLM for scoring. Error: {e}"
 
-# --- END NEW LLM Functions ---
+# --- END ADAPTED LLM Functions ---
 
 # --- Tab Content Functions ---
     
@@ -935,7 +940,6 @@ def resume_parsing_tab():
         
 def jd_management_tab_candidate():
     """JD Management Tab."""
-    # (This function remains unchanged from previous versions, included for completeness)
     st.header("📚 Manage Job Descriptions for Matching")
     st.markdown("Add multiple JDs here to compare your resume against them in the next tabs.")
     
@@ -1113,8 +1117,6 @@ def jd_batch_match_tab():
     """The Batch JD Match tab logic."""
     st.header("🎯 Batch JD Match: Best Matches")
     st.markdown("Compare your current resume against all saved job descriptions.")
-    # (Content for this tab omitted for brevity but present in full code)
-    # ... [Omitted for brevity - same content as previous full code] ...
     
     # Determine if a resume/CV is ready
     is_resume_parsed = (
@@ -1267,8 +1269,6 @@ def jd_batch_match_tab():
 
 def filter_jd_tab_content():
     """Filter JD Tab."""
-    # (Content for this tab omitted for brevity but present in full code)
-    # ... [Omitted for brevity - same content as previous full code] ...
     st.header("🔍 Filter Job Descriptions by Criteria")
     st.markdown("Use the filters below to narrow down your saved Job Descriptions.")
 
@@ -1400,8 +1400,6 @@ def filter_jd_tab_content():
 
 def parsed_data_tab():
     """Parsed Data View Tab."""
-    # (Content for this tab omitted for brevity but present in full code)
-    # ... [Omitted for brevity - same content as previous full code] ...
     st.header("✨ Parsed Resume Data View")
     st.markdown("This tab displays the loaded candidate data and provides download options.")
     st.markdown("---")
@@ -1506,8 +1504,6 @@ def parsed_data_tab():
 
 def generate_cover_letter_tab():
     """Cover Letter Tab."""
-    # (Content for this tab omitted for brevity but present in full code)
-    # ... [Omitted for brevity - same content as previous full code] ...
     st.header("✉️ Generate Cover Letter")
     st.markdown("Create a customized cover letter for a specific Job Description using your parsed resume data.")
     st.markdown("---")
@@ -1623,145 +1619,155 @@ def generate_cover_letter_tab():
     elif "generated_cover_letter" not in st.session_state or not st.session_state.generated_cover_letter:
         st.info("Select a Job Description and click 'Generate Cover Letter' to begin.")
         
-# --- NEW: Interview Preparation Tab ---
+# --- REPLACED: Interview Preparation Tab ---
 
 def interview_preparation_tab():
-    st.header("🎤 Interview Preparation Assistant")
-    st.markdown("Generate targeted interview questions based on your resume and practice your answers.")
-    st.markdown("---")
+    """
+    NEW Interview Preparation Tab Logic.
+    Generates questions, allows answer recording, and evaluates answers.
+    """
+    st.header("🎤 Interview Preparation Tools")
 
+    # Determine if a resume/CV is ready
     is_resume_parsed = (
-        st.session_state.get('parsed', {}).get('name') is not None and 
-        st.session_state.get('parsed', {}).get('error') is None
+        st.session_state.get('parsed') is not None and
+        st.session_state.parsed.get('name') is not None and
+        st.session_state.parsed.get('error') is None
+    )
+
+    if not is_resume_parsed:
+        st.warning("Please upload and successfully parse a resume first.")
+        return
+    
+    # Check if we are running in Mock Mode
+    is_mock_mode = isinstance(client, MockGroqClient) and not GROQ_API_KEY
+    
+    if not GROQ_API_KEY and not is_mock_mode:
+        st.error("Cannot use Interview Prep: GROQ_API_KEY is not configured.")
+        return
+
+    # Initialize New Interview Prep States (if not done in main)
+    if 'iq_output' not in st.session_state: st.session_state.iq_output = ""
+    if 'interview_qa' not in st.session_state: st.session_state.interview_qa = [] 
+    if 'evaluation_report' not in st.session_state: st.session_state.evaluation_report = "" 
+    
+    # Generate section options dynamically
+    parsed_keys = st.session_state.parsed.keys()
+    question_section_options = [k.replace('_', ' ').title() for k in parsed_keys if k not in ['name', 'email', 'phone', 'error', 'linkedin', 'github', 'personal_details']]
+    question_section_options = sorted([o for o in question_section_options if o and st.session_state.parsed.get(o.lower().replace(' ', '_'))]) # Only sections with content
+
+    if not question_section_options:
+        st.error("No relevant sections (Experience, Skills, Projects) found in the parsed resume for question generation.")
+        return
+        
+    st.subheader("1. Generate Interview Questions")
+    
+    section_choice = st.selectbox(
+        "Select Section", 
+        question_section_options, 
+        key='iq_section_c',
+        on_change=clear_interview_state 
     )
     
-    if not is_resume_parsed:
-        st.warning("⚠️ **Interview Prep Disabled:** Please parse a valid resume in the 'Resume Parsing' tab first.")
-        return
-        
-    # Get available sections from parsed data (Keys that hold list/string data)
-    parsed_keys = st.session_state.parsed.keys()
-    
-    # Filter keys for relevant sections
-    section_options = [k.replace('_', ' ').title() for k in parsed_keys if k not in ['name', 'email', 'phone', 'error', 'linkedin', 'github', 'personal_details']]
-    section_options = sorted(section_options)
-    
-    if not section_options:
-        st.error("Could not find relevant sections (Experience, Skills, Education, etc.) in the parsed resume for question generation.")
-        return
-
-    # --- 1. Selection and Generation ---
-    col_select, col_button = st.columns([2, 1])
-    
-    with col_select:
-        selected_section_display = st.selectbox(
-            "Select Resume Section to Target Questions",
-            options=section_options,
-            key="interview_section_select",
-            index=0
-        )
-        # Convert display name back to JSON key
-        selected_section_key = selected_section_display.lower().replace(' ', '_')
-        
-    with col_button:
-        st.write("") 
-        st.write("") 
-        if st.button("Generate 5 Interview Questions", use_container_width=True, type="primary"):
-            
-            # 1. Get the content of the selected section
-            resume_content_str = st.session_state.parsed.get(selected_section_key, "Content not found in this section.")
-            if isinstance(resume_content_str, list):
-                resume_content_str = "\n".join(resume_content_str)
-            
-            if "Content not found" in resume_content_str:
-                 st.error(f"Cannot generate questions: '{selected_section_display}' content is empty or could not be found.")
-                 return
-                 
-            st.session_state.interview_questions = []
-            st.session_state.interview_section = selected_section_display # Store section name
-
-            with st.spinner(f"Generating questions for the **{selected_section_display}** section..."):
-                questions = generate_interview_questions_llm(resume_content_str, selected_section_display)
-                st.session_state.interview_questions = questions
-                st.success(f"✅ {len(questions)} questions generated successfully!")
-                st.rerun()
-
-    st.markdown("---")
-
-    # --- 2. Practice and Evaluation ---
-    if st.session_state.get('interview_questions'):
-        
-        st.subheader(f"Practice Session: **{st.session_state.interview_section}**")
-        
-        # Get the full text of the resume for context
-        resume_context = st.session_state.full_text 
-        
-        # Display each question block
-        for i, q_data in enumerate(st.session_state.interview_questions):
-            question = q_data['question']
-            
-            with st.container(border=True):
-                st.markdown(f"**Question {i+1}:** {question}")
+    if st.button("Generate Interview Questions", key='iq_btn_c'):
+        with st.spinner("Generating questions..."):
+            try:
+                # Use the adapted LLM function
+                raw_questions_response = generate_interview_questions(st.session_state.parsed, section_choice)
                 
-                # Input for the answer
-                # Use a unique key based on index and the question to ensure state is maintained
-                answer_key = f"answer_input_{i}"
+                if raw_questions_response.startswith("Error:"):
+                     st.error(raw_questions_response)
+                     return
+
+                st.session_state.iq_output = raw_questions_response
                 
-                # Check if evaluation has been done to set the default value
-                default_answer = q_data.get('answer', '')
+                st.session_state.interview_qa = [] 
+                st.session_state.evaluation_report = "" 
                 
-                # Text area for answer input/recording
-                st.session_state[answer_key] = st.text_area(
-                    "Your Recorded Answer (Type/Paste)", 
-                    value=default_answer,
-                    height=150,
-                    key=answer_key
+                q_list = []
+                current_level = "General"
+                
+                # --- Custom Parsing Logic for LLM output format ---
+                for line in raw_questions_response.splitlines():
+                    line = line.strip()
+                    if line.startswith('[') and line.endswith(']'):
+                        current_level = line.strip('[]')
+                    elif line.lower().startswith('q') and ':' in line:
+                        question_text = line[line.find(':') + 1:].strip()
+                        q_list.append({
+                            "question": f"({current_level}) {question_text}",
+                            "answer": "", 
+                            "level": current_level
+                        })
+                        
+                st.session_state.interview_qa = q_list
+                
+                if q_list:
+                    st.success(f"Generated {len(q_list)} questions based on your **{section_choice}** section.")
+                else:
+                    st.warning(f"Could not parse any questions from the LLM response. Raw output:\n{raw_questions_response}")
+                
+            except Exception as e:
+                st.error(f"Error generating questions: {e}")
+                st.session_state.iq_output = "Error generating questions."
+                st.session_state.interview_qa = []
+
+    if st.session_state.get('interview_qa'):
+        st.markdown("---")
+        st.subheader("2. Practice and Record Answers")
+        
+        with st.form("interview_practice_form"):
+            
+            for i, qa_item in enumerate(st.session_state.interview_qa):
+                st.markdown(f"**Question {i+1}:** {qa_item['question']}")
+                
+                # Use the unique key for persistent state
+                answer_key = f'answer_q_{i}'
+                
+                # Set initial value from session state, ensuring persistence
+                answer = st.text_area(
+                    f"Your Answer for Q{i+1}", 
+                    value=st.session_state.interview_qa[i]['answer'], 
+                    height=100,
+                    key=answer_key,
+                    label_visibility='collapsed'
                 )
                 
-                # Update the session state list with the potentially edited answer *before* evaluation button is pressed
-                # This ensures the answer persists if the user navigates away or refreshes partially.
-                st.session_state.interview_questions[i]['answer'] = st.session_state[answer_key]
+                # Update session state with the latest value from the text area
+                st.session_state.interview_qa[i]['answer'] = answer 
+                st.markdown("---") 
                 
-                col_eval, col_spacer = st.columns([1, 2])
-                
-                with col_eval:
-                    # Evaluation Button
-                    if st.button(f"Evaluate Answer {i+1}", key=f"evaluate_btn_{i}", use_container_width=True):
-                        candidate_answer = st.session_state[answer_key]
-                        
-                        if not candidate_answer.strip():
-                            st.warning("Please provide an answer before evaluating.")
-                            continue
+            submit_button = st.form_submit_button("Submit & Evaluate Answers", use_container_width=True, type="primary")
 
-                        with st.spinner(f"Evaluating answer for Question {i+1}..."):
-                            evaluation_result = evaluate_interview_answer_llm(
-                                question,
-                                candidate_answer,
-                                resume_context
+            if submit_button:
+                
+                if all(item['answer'].strip() for item in st.session_state.interview_qa):
+                    with st.spinner("Sending answers to AI Evaluator..."):
+                        try:
+                            # Use the adapted evaluation function
+                            report = evaluate_interview_answers(
+                                st.session_state.interview_qa,
+                                st.session_state.parsed
                             )
-                            
-                            # Update global state with evaluation result
-                            st.session_state.interview_questions[i]['evaluation'] = evaluation_result
-                            st.session_state.interview_questions[i]['evaluated'] = True
-                            st.success(f"Evaluation for Question {i+1} complete!")
-                            st.rerun() # Rerun to display the evaluation result
-
-                # Display Evaluation
-                if q_data.get('evaluated'):
-                    st.markdown("---")
-                    st.markdown("##### 📝 Evaluation Feedback")
-                    st.info(q_data['evaluation'])
-                    
-        # Button to clear the entire session
+                            st.session_state.evaluation_report = report
+                            st.success("Evaluation complete! See the report below.")
+                        except Exception as e:
+                            st.error(f"Evaluation failed: {e}")
+                            st.session_state.evaluation_report = f"Evaluation failed: {e}\n{traceback.format_exc()}"
+                else:
+                    st.error("Please answer all generated questions before submitting.")
+        
+        if st.session_state.get('evaluation_report'):
+            st.markdown("---")
+            st.subheader("3. AI Evaluation Report")
+            st.markdown(st.session_state.evaluation_report)
+            
         st.markdown("---")
-        if st.button("🗑️ Clear Practice Session (Questions and Answers)", key="clear_interview_prep_session"):
-            del st.session_state['interview_questions']
-            del st.session_state['interview_section']
+        if st.button("🗑️ Clear Practice Session (Questions and Answers)", key="clear_interview_prep_session_bottom"):
+            clear_interview_state()
             st.success("Practice session cleared.")
             st.rerun()
 
-    else:
-        st.info("Use the selector above to choose a resume section and generate a new set of questions.")
 
 # --------------------------------------------------------------------------------------
 # CHATBOT FUNCTIONALITY (unchanged)
@@ -1769,8 +1775,6 @@ def interview_preparation_tab():
 
 def qa_on_resume(question):
     """Chatbot for Resume (Q&A) using LLM."""
-    # (Content for this function omitted for brevity but present in full code)
-    # ... [Omitted for brevity - same content as previous full code] ...
     global client, GROQ_MODEL, GROQ_API_KEY
     
     if not GROQ_API_KEY and not isinstance(client, MockGroqClient):
@@ -1803,8 +1807,6 @@ def qa_on_resume(question):
 
 def qa_on_jd(question, jd_content):
     """Chatbot for Job Description (Q&A) using LLM."""
-    # (Content for this function omitted for brevity but present in full code)
-    # ... [Omitted for brevity - same content as previous full code] ...
     global client, GROQ_MODEL, GROQ_API_KEY
     
     if not GROQ_API_KEY and not isinstance(client, MockGroqClient):
@@ -1971,9 +1973,10 @@ def candidate_dashboard():
     if 'generated_cover_letter' not in st.session_state: st.session_state.generated_cover_letter = "" 
     if 'cl_jd_name' not in st.session_state: st.session_state.cl_jd_name = "" 
     
-    # --- NEW: Interview Preparation States ---
-    if 'interview_questions' not in st.session_state: st.session_state.interview_questions = [] # List of dicts: {question, answer, evaluation, evaluated}
-    if 'interview_section' not in st.session_state: st.session_state.interview_section = ""
+    # --- INTERVIEW Preparation States (Updated for New Tab Logic) ---
+    if 'iq_output' not in st.session_state: st.session_state.iq_output = ""
+    if 'interview_qa' not in st.session_state: st.session_state.interview_qa = [] 
+    if 'evaluation_report' not in st.session_state: st.session_state.evaluation_report = "" 
     # --- END NEW ---
     
     if "resume_chatbot_history" not in st.session_state: st.session_state.resume_chatbot_history = []
@@ -2003,7 +2006,7 @@ def candidate_dashboard():
         generate_cover_letter_tab() 
         
     with tab_interview_prep:
-        interview_preparation_tab() # New function call
+        interview_preparation_tab() # The replacement function
         
     with tab_chatbot:
         chatbot_tab_content()
