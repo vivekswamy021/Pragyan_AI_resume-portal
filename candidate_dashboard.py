@@ -385,7 +385,6 @@ def parse_and_store_resume(content_source, file_name_key, source_type):
         st.session_state.current_parsing_source_name = file_name 
     elif source_type == 'json_data':
         # Used for generated CV data which is already a parsed JSON dictionary
-        # We simulate the LLM parsing step by creating the full_text version directly
         parsed_data = content_source
         file_name = "Generated_CV"
         st.session_state.current_parsing_source_name = file_name 
@@ -749,6 +748,8 @@ def resume_parsing_tab():
                         clear_interview_state()
                         st.success(f"✅ Successfully loaded and parsed **{result['name']}**.")
                         st.info("The parsed data is ready for matching.")
+                        # Clear experience list cache when new resume is parsed
+                        st.session_state.current_experience_list = []
                         st.rerun() 
                     else:
                         st.error(f"Parsing failed for {file_to_parse.name}: {result['error']}")
@@ -787,6 +788,8 @@ def resume_parsing_tab():
                         st.session_state.excel_data = result['excel_data'] 
                         st.session_state.parsed['name'] = result['name'] 
                         clear_interview_state()
+                        # Clear experience list cache when new resume is parsed
+                        st.session_state.current_experience_list = []
                         st.success(f"✅ Successfully loaded and parsed **{result['name']}**.")
                         st.info("The parsed data is ready for matching.") 
                         st.rerun()
@@ -819,7 +822,7 @@ def generate_cv_form():
             "certifications": [], "projects": [], "strength": []
         }
 
-    # --- FIX START: Robust list_to_text function ---
+    # --- FIX: Robust list_to_text function ---
     def list_to_text(data_list):
         """Converts a list (potentially containing non-string items) into a multiline string."""
         if not data_list:
@@ -829,8 +832,22 @@ def generate_cv_form():
             return "\n".join([str(item).strip() for item in data_list if item is not None])
         # Fallback for unexpected non-list, non-empty data
         return str(data_list)
-    # --- FIX END ---
+    # --- END FIX ---
     
+    # --- Dynamic Experience Initialization ---
+    # Load initial experience data into the current_experience_list state if it's empty
+    if 'current_experience_list' not in st.session_state:
+        st.session_state.current_experience_list = []
+
+    # If new data is parsed/loaded and the list is empty, pre-fill it for editing
+    if not st.session_state.current_experience_list and initial_data.get('experience'):
+        # In this simple implementation, we can't easily parse the unstructured experience strings
+        # back into structured mini-form fields, so we just prime the list with the existing strings.
+        # A more complex solution would require a parsing step here.
+        st.session_state.current_experience_list = initial_data['experience'][:]
+        
+    # --- End Dynamic Experience Initialization ---
+
 
     with st.form("cv_generation_form"):
         st.markdown("### 1. Personal Details")
@@ -854,28 +871,76 @@ def generate_cv_form():
             key="cv_skills"
         )
         
-        experience = st.text_area(
-            "Experience (Job Title, Company, Dates, Key Achievements - one job entry per line)",
-            value=list_to_text(initial_data.get("experience", [])), 
-            height=200,
-            key="cv_experience"
+        # --- DYNAMIC EXPERIENCE INPUT SECTION ---
+        st.subheader("Work Experience")
+        
+        # Display current entries
+        if st.session_state.current_experience_list:
+            st.markdown("##### Current Experience Entries:")
+            for i, entry in enumerate(st.session_state.current_experience_list):
+                st.markdown(f"**{i+1}.** {entry}")
+            
+            if st.button("🗑️ Clear All Experience Entries", key="clear_exp_btn"):
+                st.session_state.current_experience_list = []
+                st.rerun() 
+            st.markdown("---")
+
+
+        # Mini-form for adding a single experience entry
+        st.markdown("##### Add New Experience Entry")
+        with st.container(border=True):
+            exp_col1, exp_col2 = st.columns(2)
+            with exp_col1:
+                job_title = st.text_input("Job Title / Role", key="new_exp_title")
+                company = st.text_input("Company Name", key="new_exp_company")
+                # Added the requested CTC field
+                ctc = st.text_input("CTC (Annual/Monthly, Optional)", key="new_exp_ctc") 
+            with exp_col2:
+                dates = st.text_input("Dates (e.g., Jan 2022 - Present)", key="new_exp_dates")
+                achievements = st.text_area("Key Achievements / Responsibilities", key="new_exp_achievements", height=100)
+            
+            # The button to add one item to the list
+            if st.form_submit_button("➕ Add This Experience Entry", type="secondary", help="Adds the filled-out experience to the list above."):
+                if job_title and company and dates and achievements:
+                    
+                    # Construct a single, formatted string for the LLM input/CV data list
+                    ctc_str = f" (CTC: {ctc})" if ctc.strip() else ""
+                    
+                    new_entry = (
+                        f"{job_title} at {company}, {dates}{ctc_str}. "
+                        f"Achievements: {achievements.replace('\n', ' | ')}"
+                    )
+                    st.session_state.current_experience_list.append(new_entry)
+                    
+                    # Clear the dynamic form fields after submission
+                    st.session_state.new_exp_title = ""
+                    st.session_state.new_exp_company = ""
+                    st.session_state.new_exp_dates = ""
+                    st.session_state.new_exp_achievements = ""
+                    st.session_state.new_exp_ctc = "" 
+                    
+                    st.toast("Experience added to the list!")
+                    # Need to rerun to clear the form and update the display list immediately
+                    st.rerun() 
+                else:
+                    st.warning("Please fill in Job Title, Company, Dates, and Achievements.")
+        
+        st.markdown("---")
+        # --- END DYNAMIC EXPERIENCE INPUT SECTION ---
+        
+        education = st.text_area(
+            "Education (Degree, Institution, Year - one entry per line)",
+            value=list_to_text(initial_data.get("education", [])), 
+            height=150,
+            key="cv_education"
         )
         
-        col_edu, col_cert = st.columns(2)
-        with col_edu:
-            education = st.text_area(
-                "Education (Degree, Institution, Year - one entry per line)",
-                value=list_to_text(initial_data.get("education", [])), 
-                height=150,
-                key="cv_education"
-            )
-        with col_cert:
-            certifications = st.text_area(
-                "Certifications (Certification Name, Provider, Year - one entry per line)",
-                value=list_to_text(initial_data.get("certifications", [])), 
-                height=150,
-                key="cv_certifications"
-            )
+        certifications = st.text_area(
+            "Certifications (Certification Name, Provider, Year - one entry per line)",
+            value=list_to_text(initial_data.get("certifications", [])), 
+            height=100,
+            key="cv_certifications"
+        )
         
         projects = st.text_area(
             "Projects (Project Name, Description, Technologies Used - one project per line)",
@@ -884,7 +949,7 @@ def generate_cv_form():
             key="cv_projects"
         )
 
-        submitted = st.form_submit_button("💾 Generate and Load CV Data", type="primary", use_container_width=True)
+        submitted = st.form_submit_button("💾 Generate and Load CV Data", type="primary", use_container_width=False)
 
     if submitted:
         if not name or not email:
@@ -896,10 +961,8 @@ def generate_cv_form():
             if not text_input or not text_input.strip():
                 return []
             
-            # First split by newline, then strip and filter empty strings
             lines = [item.strip() for item in text_input.split('\n') if item.strip()]
             
-            # If the input was a single line of comma-separated items, handle that too
             if len(lines) == 1 and ',' in lines[0]:
                 return [item.strip() for item in lines[0].split(',') if item.strip()]
             
@@ -915,16 +978,15 @@ def generate_cv_form():
             "personal_details": personal_details,
             "skills": format_to_list(skills),
             "education": format_to_list(education),
-            "experience": format_to_list(experience),
+            # CRITICAL: Use the structured experience list!
+            "experience": st.session_state.current_experience_list, 
             "certifications": format_to_list(certifications),
             "projects": format_to_list(projects),
-            # 'strength' field is often implied/part of summary, but we include it for structure consistency
-            "strength": format_to_list(initial_data.get("strength", [])) # You might add an input for this later
+            "strength": format_to_list(initial_data.get("strength", []))
         }
 
         # 3. Load the generated data into the dashboard state
         with st.spinner(f"Loading generated data for {name}..."):
-            # Use the dedicated handling function with source_type='json_data'
             result = parse_and_store_resume(generated_data, file_name_key='generated_cv', source_type='json_data')
             
             st.session_state.parsed = result['parsed']
@@ -1762,6 +1824,9 @@ def candidate_dashboard():
     if "candidate_uploaded_resumes" not in st.session_state: st.session_state.candidate_uploaded_resumes = []
     if "pasted_cv_text" not in st.session_state: st.session_state.pasted_cv_text = ""
     if "current_parsing_source_name" not in st.session_state: st.session_state.current_parsing_source_name = None 
+    
+    # NEW: Dynamic Experience List for Form
+    if "current_experience_list" not in st.session_state: st.session_state.current_experience_list = []
     
     # JD Management / Match State
     if "candidate_jd_list" not in st.session_state: st.session_state.candidate_jd_list = []
