@@ -112,6 +112,7 @@ class MockGroqClient:
                         score = 5
                         
                     # Calculate percentages based on the score to differentiate the rows
+                    # NOTE: Mock percentages are intentionally set to be extracted easily, similar to the image example.
                     skills_p = 50 + (score * 5)
                     exp_p = 60 + (score * 3)
                     edu_p = 70 + (score * 1)
@@ -996,6 +997,7 @@ def jd_batch_match_tab():
                         
                         # --- START FIX: ROBUST REGEX EXTRACTION FOR SCORE AND PERCENTAGES ---
                         # Overall Score: Matches one or two digits optionally surrounded by brackets, followed by /10
+                        # This expression handles "[8]/10", "8/10", or " [8] / 10" variations from the LLM.
                         overall_score_match = re.search(r'Overall Fit Score:\s*\[?(\d{1,2})\]?\s*/10', fit_output, re.IGNORECASE)
                         overall_score = overall_score_match.group(1) if overall_score_match else 'N/A'
                         
