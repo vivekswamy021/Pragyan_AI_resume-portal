@@ -1,15 +1,174 @@
 import streamlit as st
 import os
-import tempfile
+import pdfplumber
+import docx
 import json
-import re
 import traceback
-from datetime import date
-from typing import Dict, Any, List
+import re 
+from dotenv import load_dotenv 
+from datetime import datetime, date # Import date for the CV builder
+from io import BytesIO 
+import time
+import pandas as pd
+import base64 
 
-# ==============================================================================
-# 1. DEPENDENCIES & HELPER FUNCTIONS (Stubs for demonstration)
-# ==============================================================================
+# --- CONFIGURATION & API SETUP ---
+
+GROQ_MODEL = "llama-3.1-8b-instant"
+# Load environment variables (e.g., GROQ_API_KEY)
+load_dotenv()
+GROQ_API_KEY = os.getenv('GROQ_API_KEY')
+
+# --- Default/Mock Data for Filtering ---
+DEFAULT_ROLES = ["Data Scientist", "Cloud Engineer", "Software Engineer", "AI/ML Engineer"]
+DEFAULT_JOB_TYPES = ["Full-time", "Contract", "Remote"]
+STARTER_KEYWORDS = {
+    "Python", "MySQL", "GCP", "cloud computing", "ML", 
+    "API services", "LLM integration", "JavaScript", "SQL", "AWS", "MLOps", "Data Visualization"
+}
+# --- End Default/Mock Data ---
+
+
+# --- Define MockGroqClient globally ---
+
+class MockGroqClient:
+    """Mock client for local testing when Groq is not available or key is missing."""
+    # The structure must mimic the actual Groq client for client = Groq(...) to work.
+    def chat(self):
+        class Completions:
+            def create(self, **kwargs):
+                prompt_content = kwargs.get('messages', [{}])[0].get('content', '')
+                
+                # Check if it's a JD Q&A call
+                if "Answer the following question about the Job Description concisely and directly." in prompt_content:
+                    question_match = re.search(r'Question:\s*(.*)', prompt_content)
+                    question = question_match.group(1).strip() if question_match else "a question"
+                    
+                    if 'role' in question.lower():
+                        return type('MockResponse', (object,), {'choices': [type('Choice', (object,), {'message': type('Message', (object,), {'content': 'The required role in this Job Description is Cloud Engineer.'})})()]})
+                    elif 'experience' in question.lower():
+                        return type('MockResponse', (object,), {'choices': [type('Choice', (object,), {'message': type('Message', (object,), {'content': 'The job requires 3+ years of experience in AWS/GCP and infrastructure automation.'})})()]})
+                    else:
+                        return type('MockResponse', (object,), {'choices': [type('Choice', (object,), {'message': type('Message', (object,), {'content': f'Mock answer for JD question: The JD mentions Python and Docker as key skills.'})})()]})
+
+                # Check if it's a Resume Q&A call
+                elif "Answer the following question about the resume concisely and directly." in prompt_content:
+                    question_match = re.search(r'Question:\s*(.*)', prompt_content)
+                    question = question_match.group(1).strip() if question_match else "a question"
+                    
+                    if 'name' in question.lower():
+                        return type('MockResponse', (object,), {'choices': [type('Choice', (object,), {'message': type('Message', (object,), {'content': 'The candidate\'s name is Vivek Swamy.'})})()]})
+                    elif 'skills' in question.lower():
+                        return type('MockResponse', (object,), {'choices': [type('Choice', (object,), {'message': type('Message', (object,), {'content': 'Key skills include Python, SQL, AWS, and MLOps.'})})()]})
+                    else:
+                        return type('MockResponse', (object,), {'choices': [type('Choice', (object,), {'message': type('Message', (object,), {'content': f'Based on the mock resume data, I can provide a simulated answer to your question about {question}.'})})()]})
+
+
+                # Mock candidate data (Vivek Swamy) for parsing
+                mock_llm_json = {
+                    "name": "Vivek Swamy", 
+                    "email": "vivek.swamy@example.com", 
+                    "phone": "555-1234", 
+                    "linkedin": "https://linkedin.com/in/vivek-swamy-mock", 
+                    "github": "https://github.com/vivek-mock", 
+                    "personal_details": "Mock summary generated for: Vivek Swamy.", 
+                    "skills": [
+                        "Python", "SQL", "AWS", "Streamlit", 
+                        "LLM Integration", "MLOps", "Data Visualization", 
+                        "Docker", "Kubernetes", "Java", "API Services" 
+                    ], 
+                    "education": ["B.S. Computer Science, Mock University, 2020"], 
+                    "experience": ["Software Intern, Mock Solutions (2024-2025)", "Data Analyst, Test Corp (2022-2024)"], 
+                    "certifications": ["Mock Certification in AWS Cloud"], 
+                    "projects": ["Mock Project: Built an MLOps pipeline using Docker and Kubernetes."], 
+                    "strength": ["Mock Strength"], 
+                }
+                
+                # Mock response content for GroqClient initialization check
+                message_obj = type('Message', (object,), {'content': json.dumps(mock_llm_json)})()
+                choice_obj = type('Choice', (object,), {'message': message_obj})()
+                response_obj = type('MockResponse', (object,), {'choices': [choice_obj]})()
+                return response_obj
+        
+        # Add a placeholder for the completions object if we need a mock response for fit evaluation
+        class FitCompletions(Completions):
+            def create(self, **kwargs):
+                prompt_content = kwargs.get('messages', [{}])[0].get('content', '')
+                
+                if "Evaluate how well the following resume content matches the provided job description" in prompt_content:
+                    # SIMULATED FIT LOGIC (Fallback for when the LLM-dependent function tries to run without a key)
+                    
+                    # Simple heuristic mock score based on role title in the prompt
+                    jd_role_match = re.search(r'(?:Role|Engineer|Scientist)[:\s]+([\w\s/-]+)', prompt_content)
+                    jd_role = jd_role_match.group(1).lower().strip() if jd_role_match else "default"
+                    
+                    if 'ai/ml' in jd_role or 'mlops' in jd_role:
+                        score = 8
+                    elif 'data scientist' in jd_role:
+                        score = 7
+                    elif 'cloud engineer' in jd_role:
+                        score = 6
+                    else:
+                        score = 5
+                        
+                    # Calculate percentages based on the score to differentiate the rows
+                    skills_p = 50 + (score * 5)
+                    exp_p = 60 + (score * 3)
+                    edu_p = 70 + (score * 1)
+                    
+                    # NOTE: This mock output uses the strict format expected by the regex parser below.
+                    mock_fit_output = f"""
+                    Overall Fit Score: {score}/10
+                    
+                    --- Section Match Analysis ---
+                    Skills Match: {skills_p}%
+                    Experience Match: {exp_p}%
+                    Education Match: {edu_p}%
+                    
+                    Strengths/Matches:
+                    - Mock Match Point 1 (Role: {jd_role})
+                    - Mock Match Point 2
+                    
+                    Gaps/Areas for Improvement:
+                    - Mock Gap 1
+                    
+                    Overall Summary: Mock summary for score {score}.
+                    """
+                    message_obj = type('Message', (object,), {'content': mock_fit_output})()
+                    choice_obj = type('Choice', (object,), {'message': message_obj})()
+                    response_obj = type('MockResponse', (object,), {'choices': [choice_obj]})()
+                    return response_obj
+                
+                # Return standard parsing mock or Q&A mock
+                return super().create(**kwargs)
+
+        return FitCompletions()
+
+try:
+    # Attempt to import the real Groq client
+    from groq import Groq
+    
+    if GROQ_API_KEY:
+        client = Groq(api_key=GROQ_API_KEY)
+        # Check if the client is really ready or just a placeholder
+        if client:
+             class GroqPlaceholder(Groq): 
+                 def __init__(self, api_key): 
+                     super().__init__(api_key=api_key)
+                     self.client_ready = True
+             client = GroqPlaceholder(api_key=GROQ_API_KEY)
+        else:
+            raise ValueError("Groq client not initialized successfully, falling back to Mock.")
+
+    if not GROQ_API_KEY:
+        raise ValueError("GROQ_API_KEY not set. Using Mock Client.")
+        
+except (ImportError, ValueError, NameError) as e:
+    # Fallback to Mock Client
+    client = MockGroqClient()
+    
+# --- END API SETUP ---
+
 
 # --- Utility Functions ---
 
@@ -17,357 +176,1385 @@ def go_to(page_name):
     """Changes the current page in Streamlit's session state."""
     st.session_state.page = page_name
 
-def clear_interview_state():
-    """Clears all generated questions, answers, and the evaluation report."""
-    st.session_state.interview_qa = []
-    st.session_state.iq_output = ""
-    st.session_state.evaluation_report = ""
-    st.toast("Practice answers cleared.")
-    
-# --- External LLM/File Logic (Simplified or Stubbed for standalone copy) ---
-question_section_options = ["skills","experience", "certifications", "projects", "education"]
-DEFAULT_JOB_TYPES = ["Full-time", "Contract", "Internship", "Remote", "Part-time"]
-DEFAULT_ROLES = ["Software Engineer", "Data Scientist", "Product Manager", "HR Manager", "Marketing Specialist", "Operations Analyst"]
+def get_file_type(file_name):
+    """Identifies the file type based on its extension, handling common text formats."""
+    ext = os.path.splitext(file_name)[1].lower().strip('.')
+    if ext == 'pdf': return 'pdf'
+    elif ext in ('docx', 'doc'): return 'docx'
+    elif ext in ('txt', 'md', 'markdown', 'rtf'): return 'txt' 
+    elif ext == 'json': return 'json'
+    elif ext in ('xlsx', 'xls', 'csv'): return 'excel' 
+    else: return 'unknown' 
 
-# STUBS for functions that require the actual full application code or external APIs
-def extract_jd_from_linkedin_url(url: str) -> str:
-    """Stub: Simulates JD content extraction."""
-    return f"--- Simulated JD for: {url}\n\nJob Description content extracted from LinkedIn URL. This includes role details, requirements, and company information."
-
-def extract_jd_metadata(jd_text):
-    """Stub: Simulates extraction of structured metadata."""
-    if "Software Engineer" in jd_text:
-        return {"role": "Software Engineer", "job_type": "Full-time", "key_skills": ["Python", "Flask", "AWS", "SQL", "CI/CD"]}
-    elif "Data Scientist" in jd_text:
-        return {"role": "Data Scientist", "job_type": "Contract", "key_skills": ["Python", "Machine Learning", "TensorFlow", "Pandas", "Statistics"]}
-    return {"role": "General Analyst", "job_type": "Full-time", "key_skills": ["Python", "SQL", "Cloud"]}
-
-def parse_and_store_resume(file_input, file_name_key='default', source_type='file'):
-    """Stub: Simulates parsing and stores results into a structure.
-    
-    Updated default structured experience and education.
-    """
-    if st.session_state.get('parsed', {}).get('name') and st.session_state.parsed.get('name') != "":
-         return {"parsed": st.session_state.parsed, "full_text": st.session_state.full_text, "excel_data": None, "name": st.session_state.parsed['name']}
-    
-    if source_type == 'file':
-        name_from_file = getattr(file_input, 'name', 'Uploaded_Resume').split('.')[0].replace('_', ' ')
-    else:
-        name_from_file = "Parsed Text CV"
+def extract_content(file_type, file_content_bytes, file_name):
+    """Extracts text content from uploaded file content (bytes)."""
+    text = ''
+    excel_data = None
+    try:
+        if file_type == 'pdf':
+            with pdfplumber.open(BytesIO(file_content_bytes)) as pdf:
+                for page in pdf.pages:
+                    page_text = page.extract_text()
+                    if page_text:
+                        text += page_text + '\n'
         
-    default_structured_experience = [
-        {
-            "company": "Prgayan AI", 
-            "role": "AIML Engineer", 
-            "from_year": "2025", 
-            "to_year": "Present", 
-            "ctc": "Negotiable", 
-            "responsibilities": "Developing and deploying AI/ML models for NLP and Computer Vision projects."
-        },
-    ]
+        elif file_type == 'docx':
+            doc = docx.Document(BytesIO(file_content_bytes))
+            text = '\n'.join([para.text for para in doc.paragraphs])
+        
+        elif file_type == 'txt':
+            try:
+                # Try UTF-8 first, fallback to Latin-1
+                text = file_content_bytes.decode('utf-8')
+            except UnicodeDecodeError:
+                 text = file_content_bytes.decode('latin-1')
+        
+        elif file_type == 'json':
+            try:
+                # Wrap JSON content so LLM parsing function can detect and use it
+                text = file_content_bytes.decode('utf-8')
+                text = "--- JSON Content Start ---\n" + text + "\n--- JSON Content End ---"
+            except UnicodeDecodeError:
+                return f"[Error] JSON content extraction failed: Unicode Decode Error.", None
+        
+        elif file_type == 'excel':
+            try:
+                if file_name.endswith('.csv'):
+                    df = pd.read_csv(BytesIO(file_content_bytes))
+                else: 
+                    xls = pd.ExcelFile(BytesIO(file_content_bytes))
+                    all_sheets_data = {}
+                    for sheet_name in xls.sheet_names:
+                        df = pd.read_excel(xls, sheet_name=sheet_name)
+                        all_sheets_data[sheet_name] = df.to_json(orient='records') 
+                        
+                    excel_data = all_sheets_data 
+                    text = json.dumps(all_sheets_data, indent=2)
+                    text = f"[EXCEL_CONTENT] The following structured data was extracted:\n{text}"
+                    
+            except Exception as e:
+                return f"[Error] Excel/CSV file parsing failed. Error: {e}", None
+
+
+        if not text.strip() and file_type not in ('excel', 'json'): 
+            return f"[Error] {file_type.upper()} content extraction failed or file is empty.", None
+        
+        return text, excel_data
     
-    default_structured_education = [
-        {
-            "degree": "M.Sc. Computer Science", 
-            "college": "University of Excellence", 
-            "university": "City University",
-            "from_year": "2020",
-            "to_year": "2022",
-            "score": "8.5",
-            "type": "CGPA"
-        },
-    ]
+    except Exception as e:
+        return f"[Error] Fatal Extraction Error: Failed to read file content ({file_type}). Error: {e}\n{traceback.format_exc()}", None
+
+@st.cache_data(show_spinner="Analyzing content with Groq LLM...")
+def parse_resume_with_llm(text):
+    """
+    Sends resume text to the LLM for structured information extraction.
+    """
     
-    default_structured_certifications = [
-        {
-            "title": "AWS Certified Cloud Practitioner", 
-            "given_by": "Amazon Web Services", 
-            "issue_date": "2023-10-01"
-        }
-    ]
+    def get_fallback_name():
+        return "Vivek Swamy" 
+
+    # 1. Handle Pre-flight errors (e.g., failed extraction)
+    if text.startswith("[Error"):
+        return {"name": "Parsing Error", "error": text}
+
+    # 2. Check for and parse direct JSON content (for JSON file uploads)
+    json_match_external = re.search(r'--- JSON Content Start ---\s*(.*?)\s*--- JSON Content End ---', text, re.DOTALL)
     
-    parsed_data = {
-        "name": name_from_file, 
-        "email": "candidate@example.com", 
-        "phone": "555-123-4567",
-        "linkedin": "linkedin.com/in/candidate", 
-        "github": "github.com/candidate",
-        "skills": ["Python", "Machine Learning", "Streamlit", "Data Analysis", "TensorFlow"], 
-        "experience": default_structured_experience, 
-        "structured_experience": default_structured_experience, 
-        "education": default_structured_education, 
-        "structured_education": default_structured_education, 
-        "certifications": default_structured_certifications, 
-        "structured_certifications": default_structured_certifications, 
-        "projects": ["Built this Streamlit Dashboard"], 
-        "strength": ["Problem Solver", "Quick Learner"], 
-        "personal_details": "Highly motivated and results-oriented professional with 3+ years experience in AIML."
-    }
+    if json_match_external:
+        try:
+            json_content = json_match_external.group(1).strip()
+            parsed_data = json.loads(json_content)
+            
+            if not parsed_data.get('name'):
+                 parsed_data['name'] = get_fallback_name()
+                 
+            parsed_data['error'] = None 
+            
+            return parsed_data
+        
+        except json.JSONDecodeError:
+            return {"name": get_fallback_name(), "error": f"LLM Input Error: Could not decode uploaded JSON content into a valid structure."}
+            
+    # 3. Handle Mock Client execution (Fallback for PDF/DOCX/TXT)
+    if isinstance(client, MockGroqClient) or not GROQ_API_KEY:
+        try:
+            # Use the mock client's default mock response for parsing
+            completion = client.chat().create(model=GROQ_MODEL, messages=[{}])
+            content = completion.choices[0].message.content.strip()
+            parsed_data = json.loads(content)
+            
+            if not parsed_data.get('name'):
+                 parsed_data['name'] = get_fallback_name()
+            
+            parsed_data['error'] = None 
+            return parsed_data
+            
+        except Exception as e:
+            return {"name": get_fallback_name(), "error": f"Mock Client Error: {e}"}
+
+    # 4. Handle Real Groq Client execution 
     
+    prompt = f"""Extract the following information from the resume in structured JSON.
+    Ensure all relevant details for each category are captured.
+    - Name, - Email, - - Phone, - Skills (list), - Education (list of degrees/institutions/dates), 
+    - Experience (list of job roles/companies/dates/responsibilities), - Certifications (list), 
+    - Projects (list of project names/descriptions/technologies), - Strength (list of personal strengths/qualities), 
+    - Personal Details (e.g., address, date of birth, nationality), - Github (URL), - LinkedIn (URL)
+    
+    Resume Text:
+    {text}
+    
+    Provide the output strictly as a JSON object.
+    """
+    content = ""
+    parsed = {}
+    json_str = ""
+    
+    try:
+        response = client.chat.completions.create( 
+            model=GROQ_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.2,
+            response_format={"type": "json_object"}
+        )
+        content = response.choices[0].message.content.strip()
+
+        # --- CRITICAL FIX: AGGRESSIVE JSON ISOLATION USING REGEX ---
+        json_match = re.search(r'\{.*\}', content, re.DOTALL)
+        
+        if json_match:
+            json_str = json_match.group(0).strip()
+            
+            if json_str.startswith('```json'):
+                json_str = json_str[len('```json'):]
+            if json_str.endswith('```'):
+                json_str = json_str[:-len('```')]
+            
+            json_str = json_str.strip()
+            
+            parsed = json.loads(json_str)
+        else:
+            raise json.JSONDecodeError("Could not isolate a valid JSON structure from LLM response.", content, 0)
+        
+        # --- END CRITICAL FIX ---
+        
+        # Final cleanup for the app structure
+        if not parsed.get('name'):
+            parsed['name'] = get_fallback_name()
+            
+        parsed['error'] = None 
+        return parsed
+
+    except json.JSONDecodeError as e:
+        error_msg = f"JSON decoding error from LLM. LLM returned malformed JSON. Error: {e} | Malformed string segment:\n---\n{json_str[:200]}..."
+        return {"name": get_fallback_name(), "error": error_msg}
+        
+    except Exception as e:
+        error_msg = f"LLM API interaction error: {e}"
+        return {"name": get_fallback_name(), "error": error_msg}
+
+# -----------------------------------------------------------
+# END ADAPTED FUNCTION
+# -----------------------------------------------------------
+
+
+# --- HELPER FUNCTIONS FOR FILE/TEXT PROCESSING ---
+
+def clear_interview_state():
+    """Clears all session state variables related to interview/match sessions."""
+    if 'interview_chat_history' in st.session_state: del st.session_state['interview_chat_history']
+    if 'current_interview_jd' in st.session_state: del st.session_state['current_interview_jd']
+    if 'evaluation_report' in st.session_state: del st.session_state['evaluation_report']
+    if 'candidate_match_results' in st.session_state: st.session_state.candidate_match_results = []
+    
+# Updated signature to match the request
+def parse_and_store_resume(content_source, file_name_key, source_type):
+    """Handles extraction, parsing, and storage of CV data from either a file or pasted text."""
+    extracted_text = ""
+    excel_data = None
+    file_name = "Pasted_Resume"
+
+    if source_type == 'file':
+        uploaded_file = content_source
+        file_name = uploaded_file.name
+        file_type = get_file_type(file_name)
+        uploaded_file.seek(0) 
+        st.session_state.current_parsing_source_name = file_name 
+        extracted_text, excel_data = extract_content(file_type, uploaded_file.getvalue(), file_name)
+    elif source_type == 'text':
+        extracted_text = content_source.strip()
+        file_name = "Pasted_Text"
+        st.session_state.current_parsing_source_name = file_name 
+
+    if extracted_text.startswith("[Error"):
+        return {"error": extracted_text, "full_text": extracted_text, "excel_data": None, "name": file_name}
+    
+    # 2. Call LLM Parser
+    parsed_data = parse_resume_with_llm(extracted_text)
+    
+    # 3. Handle LLM Parsing Error
+    if parsed_data.get('error') is not None: 
+        error_name = parsed_data.get('name', file_name) 
+        return {"error": parsed_data['error'], "full_text": extracted_text, "excel_data": excel_data, "name": error_name}
+
+    # 4. Create compiled text for download/Q&A
     compiled_text = ""
     for k, v in parsed_data.items():
-        if v and k not in ["structured_experience", "structured_certifications", "structured_education"]: 
-            compiled_text += f"{k.replace('_', ' ').title()}:\n"
+        if v and k not in ['error']:
+            compiled_text += f"## {k.replace('_', ' ').title()}\n\n"
             if isinstance(v, list):
-                if all(isinstance(item, dict) for item in v):
-                     compiled_text += "\n".join([json.dumps(item) for item in v]) + "\n\n"
-                else:
-                    compiled_text += "\n".join([f"- {item}" for item in v if isinstance(item, str)]) + "\n\n"
+                compiled_text += "\n".join([f"* {item}" for item in v]) + "\n\n"
             else:
                 compiled_text += str(v) + "\n\n"
 
-    return {"parsed": parsed_data, "full_text": compiled_text, "excel_data": None, "name": parsed_data['name']}
-
-def extract_score(fit_output):
-    """Helper to extract score from fit output."""
-    score_match = re.search(r'Overall Fit Score:\s*(\d+)/10', fit_output)
-    skills_match = re.search(r'Skills Match:\s*(\d+)%', fit_output)
-    experience_match = re.search(r'Experience Match:\s*(\d+)%', fit_output)
+    # Ensure final_name uses the parsed name
+    final_name = parsed_data.get('name', 'Unknown_Candidate').replace(' ', '_') 
+    
     return {
-        "overall": score_match.group(1) if score_match else 'N/A',
-        "skills": skills_match.group(1) if skills_match else 'N/A',
-        "experience": experience_match.group(1) if experience_match else 'N/A'
+        "parsed": parsed_data, 
+        "full_text": compiled_text, 
+        "excel_data": excel_data, 
+        "name": final_name
     }
 
-def evaluate_jd_fit(job_description, parsed_json):
-    """Stub: Simulates JD fit evaluation."""
-    import random
-    score = random.randint(5, 9)
-    skills = random.randint(60, 95)
-    experience = random.randint(50, 90)
-    
-    return f"""Overall Fit Score: {score}/10
---- Section Match Analysis ---
-Skills Match: {skills}%
-Experience Match: {experience}%
-Education Match: 90% (Based on B.Tech and M.Sc. degrees)
 
-Strengths/Matches:
-- Candidate's Python and ML skills ({skills}%) are an excellent match for this JD.
-- Experience ({experience}%) is relevant, particularly the **AIML Engineer at Prgayan AI** role.
-- Education is a **Strong** match with advanced degrees listed.
-
-Gaps/Areas for Improvement:
-- Needs more specific experience in the [Niche Technology] mentioned in the JD.
-- The resume summary could be tailored more closely to the [Specific Industry] focus of this role.
-
-Overall Summary: This is a **Strong** fit. Focus on experience and advanced education in the interview.
-"""
-def qa_on_resume(question):
-    """Stub: Simulates Q&A on resume."""
-    if "skills" in question.lower():
-        return f"Based on the resume, the key skills are: {', '.join(st.session_state.parsed.get('skills', ['No skills found']))}. The candidate has a strong background in data tools."
-    return f"Based on the resume, the answer to '{question}' is: [Simulated Answer - Check experience/projects section for details. All data is stored as structured data.]"
-
-def qa_on_jd(question, selected_jd_name):
-    """Stub: Simulates Q&A on JD."""
-    return f"Based on the JD '{selected_jd_name}', the answer to '{question}' is: [Simulated Answer - The JD content specifies a 5+ years experience requirement and mandatory Python/SQL skills]."
-
-def generate_interview_questions(parsed_json, section):
-    """Stub: Simulates interview question generation."""
-    
-    education_data = parsed_json.get('education', [])
-    first_degree = {}
-    if education_data and isinstance(education_data[0], dict):
-        first_degree = education_data[0]
-        score_display = f"{first_degree.get('score', 'N/A')} {first_degree.get('type', 'Score')}"
-    else:
-        score_display = "N/A"
-
-    if section == "education":
-        return f"""[Technical/Academic]
-Q1: Tell me about your **{first_degree.get('degree', 'highest degree')}** and how it prepared you for this role.
-Q2: What was your favorite technical project or thesis during your time at **{first_degree.get('university', 'university')}**?
-Q3: How do you think your academic performance (**{score_display}**) reflects your work ethic?
-[Behavioral]
-Q4: Describe a time you struggled academically and how you overcame it.
-Q5: How do you keep your technical skills updated now that you've finished your formal education?
-"""
-    
-    return f"""[Behavioral]
-Q1: Tell me about a time you applied your strongest skill, **{parsed_json.get('skills', ['No skill'])[0]}**, to solve a major problem.
-Q2: Describe a project where your work in the **{section}** section directly led to a quantifiable business outcome.
-[Technical]
-Q3: How do you handle a scenario where a tool in your **{section}** section fails in production?
-Q4: What is the most challenging concept you learned in your **{section}** area?
-[General]
-Q5: Why are you looking to move from your current role/studies?
-"""
-
-def evaluate_interview_answers(qa_list, parsed_json):
-    """Stub: Simulates interview answer evaluation."""
-    
-    total_score = len(qa_list) * 7 
-    
-    feedback_parts = ["## Evaluation Results"]
-    for i, qa_item in enumerate(qa_list):
-        feedback_parts.append(f"""
-### Question {i+1}: {qa_item['question']}
-Score: 7/10
-Feedback:
-- **Clarity & Accuracy:** The answer for this question was good, addressing the core topic.
-- **Improvements:** Try to use the **STAR** (Situation, Task, Action, Result) method, especially for behavioral questions. Quantify your results.
-""")
-        
-    feedback_parts.append(f"""
----
-## Final Assessment
-Total Score: {total_score}/{len(qa_list) * 10}
-Overall Summary: The candidate shows **Good** fundamental knowledge. To score higher, better integrate answers with accomplishments listed in the resume (e.g., mention specific projects from the Prgayan AI role).
-""")
-    
-    return "\n".join(feedback_parts)
-
-# --- Simplified HTML/Markdown output for Structured Data ---
-def generate_cv_html(parsed_data):
-    """Generates CV HTML with simplified plain text output for structured sections.
-    
-    ORDER: Summary, Skills, Education, Experience, Certifications, Projects, Strengths
+def get_download_link(data, filename, file_format):
     """
+    Generates a base64 encoded download link for the given data and format.
+    """
+    mime_type = "application/octet-stream"
     
-    # Skills HTML
-    skills_list = "".join([f"<li>{s}</li>" for s in parsed_data.get('skills', []) if isinstance(s, str)])
-    
-    # Education HTML
-    education_list = ""
-    for edu in parsed_data.get('education', []):
-        if isinstance(edu, dict):
-            score_display = f"{edu.get('score', 'N/A')} {edu.get('type', '')}".strip()
-            education_list += f"""
-            <li>
-                **{edu.get('degree', 'N/A')}** ({score_display}) | {edu.get('college', 'N/A')}, {edu.get('university', 'N/A')} 
-                <br>({edu.get('from_year', '')} - {edu.get('to_year', '')})
-            </li>
-            """
+    if file_format == 'json':
+        data_bytes = data.encode('utf-8')
+        mime_type = "application/json"
+    elif file_format == 'markdown':
+        data_bytes = data.encode('utf-8')
+        mime_type = "text/markdown"
+    elif file_format == 'html':
+        # Create a simple HTML document for rendering
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head><title>{filename}</title></head>
+        <body style="font-family: Arial, sans-serif; padding: 20px;">
+        <h1 style="color: #4CAF50;">Parsed Resume Data: {filename.replace('.html', '')}</h1>
+        <hr/>
+        <pre style="white-space: pre-wrap; word-wrap: break-word; background: #f4f4f4; padding: 10px; border: 1px solid #ddd;">
+        {data}
+        </pre>
+        <p>Generated by PragyanAI</p>
+        </body>
+        </html>
+        """
+        data_bytes = html_content.encode('utf-8')
+        mime_type = "text/html"
+    else:
+        return "" 
 
-    # Experience HTML
-    experience_list = ""
-    for exp in parsed_data.get('experience', []):
-        if isinstance(exp, dict):
-            experience_list += f"""
-            <li>
-                **{exp.get('role', 'N/A')}** at {exp.get('company', 'N/A')} ({exp.get('from_year', '')} - {exp.get('to_year', '')}).
-                <br>Responsibilities: {exp.get('responsibilities', 'N/A')}
-            </li>
-            """
-
-    # Certifications HTML
-    certifications_list = ""
-    for cert in parsed_data.get('certifications', []):
-        if isinstance(cert, dict):
-            certifications_list += f"""
-            <li>
-                {cert.get('title', 'N/A')} - Issued by: {cert.get('given_by', 'N/A')}, Date: {cert.get('issue_date', 'N/A')}
-            </li>
-            """
-            
-    # Projects HTML
-    projects_list = "".join([f"<li>{p}</li>" for p in parsed_data.get('projects', []) if isinstance(p, str)])
+    b64 = base64.b64encode(data_bytes).decode()
     
-    # Strengths HTML
-    strengths_list = "".join([f"<li>{s}</li>" for s in parsed_data.get('strength', []) if isinstance(s, str)])
+    # Return the full data URI
+    return f"data:{mime_type};base64,{b64}"
 
+def render_download_button(data_uri, filename, label, color):
+    """Renders an HTML button that triggers a file download."""
     
-    return f"""
+    if color == 'json':
+        bg_color = "#4CAF50" # Green
+        icon = "💾"
+    elif color == 'markdown':
+        bg_color = "#008CBA" # Blue
+        icon = "⬇️"
+    elif color == 'html':
+        bg_color = "#f44336" # Red
+        icon = "📄"
+    else:
+        bg_color = "#555555"
+        icon = ""
+        
+    st.markdown(
+        f"""
+        <a href="{data_uri}" download="{filename}" style="text-decoration: none;">
+            <button style="
+                background-color: {bg_color}; 
+                color: white; 
+                border: none; 
+                padding: 10px 10px; 
+                text-align: center; 
+                text-decoration: none; 
+                display: inline-block; 
+                font-size: 14px; 
+                margin: 4px 0; 
+                cursor: pointer; 
+                border-radius: 4px;
+                width: 100%;">
+                {icon} {label}
+            </button>
+        </a>
+        """, 
+        unsafe_allow_html=True
+    )
+    
+# --- New Formatting Helper Functions for CV Builder ---
+
+def format_parsed_json_to_markdown(parsed_json):
+    """Converts the structured parsed JSON back into a readable Markdown document."""
+    markdown_output = ""
+    # Define a preferred order for sections
+    order = [
+        "name", "email", "phone", "linkedin", "github", "personal_details",
+        "skills", "education", "experience", "certifications", 
+        "projects", "strength"
+    ]
+    
+    # Header Section
+    markdown_output += f"# {parsed_json.get('name', 'CANDIDATE NAME')}\n\n"
+    contact_info = []
+    if parsed_json.get('phone'): contact_info.append(parsed_json['phone'])
+    if parsed_json.get('email'): contact_info.append(parsed_json['email'])
+    if parsed_json.get('linkedin'): contact_info.append(f"[LinkedIn]({parsed_json['linkedin']})")
+    if parsed_json.get('github'): contact_info.append(f"[GitHub]({parsed_json['github']})")
+    
+    if contact_info:
+        markdown_output += f"*{' | '.join(contact_info)}*\n\n"
+    
+    # Summary
+    if parsed_json.get('personal_details'):
+        markdown_output += f"## Professional Summary\n---\n{parsed_json['personal_details']}\n\n"
+
+    for key in order:
+        if key in parsed_json and key not in ["name", "email", "phone", "linkedin", "github", "personal_details"]:
+            value = parsed_json[key]
+            if value and (isinstance(value, str) and value.strip() or isinstance(value, list) and value):
+                title = key.replace('_', ' ').title()
+                markdown_output += f"## {title}\n---\n"
+                
+                if isinstance(value, list):
+                    for item in value:
+                        if isinstance(item, str):
+                            markdown_output += f"* {item}\n"
+                        elif isinstance(item, dict):
+                            # Handle structured data from the builder
+                            if key == 'education':
+                                score_display = f"{item.get('score', '')} {item.get('type', '')}".strip()
+                                markdown_output += f"### **{item.get('degree', 'N/A')}**\n"
+                                markdown_output += f"*{item.get('college', 'N/A')}, {item.get('university', 'N/A')} | {item.get('from_year', '')} - {item.get('to_year', 'Present')}*\n"
+                                if score_display.strip(): markdown_output += f"Score/Grade: {score_display}\n"
+                            
+                            elif key == 'experience':
+                                markdown_output += f"### **{item.get('role', 'N/A')}** at {item.get('company', 'N/A')}\n"
+                                duration = f"{item.get('from_year', '')} - {item.get('to_year', 'Present')}"
+                                ctc = f" | CTC: {item.get('ctc', 'Confidential')}" if item.get('ctc') else ""
+                                markdown_output += f"*{duration}{ctc}*\n"
+                                if item.get('responsibilities'): markdown_output += f"*Responsibilities: {item['responsibilities']}*\n"
+                            
+                            elif key == 'certifications':
+                                markdown_output += f"### **{item.get('title', 'N/A')}**\n"
+                                markdown_output += f"*{item.get('given_by', 'N/A')} | Issued: {item.get('issue_date', 'N/A')}*\n"
+                            
+                            else: # Catch-all for other list items if they were objects
+                                markdown_output += f"* {json.dumps(item)}\n"
+                        
+                    markdown_output += "\n"
+                elif isinstance(value, str):
+                    markdown_output += f"{value}\n\n"
+                    
+    return markdown_output
+
+def generate_cv_html(parsed_json):
+    """Generates a clean, print-ready HTML file for the CV data."""
+    
+    # Helper to clean up titles
+    def safe_title(key):
+        return key.replace('_', ' ').title()
+
+    # Start HTML structure with basic styling for print readiness
+    html_content = f"""
+    <!DOCTYPE html>
     <html>
     <head>
-        <title>{parsed_data.get('name', 'CV Preview')}</title>
-        <style>body{{font-family: Arial, sans-serif; margin: 40px;}} h1{{color: #2e6c80; border-bottom: 2px solid #2e6c80;}} h2{{color: #3d99b1;}} ul{{list-style-type: none; padding: 0;}} li{{margin-bottom: 10px;}}</style>
+        <title>{parsed_json.get('name', 'Generated CV')}</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; margin: 40px; color: #333; }}
+            h1 {{ border-bottom: 2px solid #555; padding-bottom: 5px; margin-bottom: 10px; color: #1a1a1a; }}
+            h2 {{ color: #0066cc; margin-top: 20px; border-bottom: 1px solid #ddd; padding-bottom: 3px; }}
+            h3 {{ font-size: 1.1em; margin-bottom: 5px; color: #555; }}
+            .contact {{ font-size: 0.9em; margin-bottom: 20px; }}
+            .section-content {{ margin-left: 10px; margin-bottom: 15px; }}
+            ul {{ list-style-type: disc; margin-left: 20px; padding-left: 0; }}
+            li {{ margin-bottom: 5px; }}
+            .exp-details {{ margin-top: 5px; font-style: italic; font-size: 0.9em; }}
+        </style>
     </head>
     <body>
-        <h1>{parsed_data.get('name', 'CV Preview')}</h1>
-        <p>Email: {parsed_data.get('email', 'N/A')} | Phone: {parsed_data.get('phone', 'N/A')}</p>
-        <p>LinkedIn: <a href="{parsed_data.get('linkedin', '#')}">{parsed_data.get('linkedin', 'N/A')}</a></p>
-        
-        <h2>Summary</h2>
-        <p>{parsed_data.get('personal_details', 'No summary provided.')}</p>
+    """
+    
+    # Preferred order
+    order = [
+        "name", "email", "phone", "linkedin", "github", "personal_details",
+        "skills", "education", "experience", "certifications", 
+        "projects", "strength"
+    ]
 
-        <h2>Key Skills</h2>
-        <ul>{skills_list}</ul>
-        
-        <h2>Education</h2>
-        <ul>{education_list}</ul>
-        
-        <h2>Experience</h2>
-        <ul>{experience_list}</ul>
-        
-        <h2>Certifications</h2>
-        <ul>{certifications_list}</ul>
-        
-        <h2>Projects</h2>
-        <ul>{projects_list}</ul>
+    # 1. Header Section
+    html_content += f"<h1>{parsed_json.get('name', 'CANDIDATE NAME')}</h1>"
+    contact_info = []
+    if parsed_json.get('phone'): contact_info.append(parsed_json['phone'])
+    if parsed_json.get('email'): contact_info.append(parsed_json['email'])
+    if parsed_json.get('linkedin'): contact_info.append(f"<a href='{parsed_json['linkedin']}'>LinkedIn</a>")
+    if parsed_json.get('github'): contact_info.append(f"<a href='{parsed_json['github']}'>GitHub</a>")
+    
+    if contact_info:
+        html_content += f"<div class='contact'>{' | '.join(contact_info)}</div>"
 
-        <h2>Strengths</h2>
-        <ul>{strengths_list}</ul>
+    # 2. Summary
+    if parsed_json.get('personal_details'):
+        html_content += f"<h2>Professional Summary</h2><div class='section-content'><p>{parsed_json['personal_details']}</p></div>"
+
+    # 3. Dynamic Sections
+    for key in order:
+        if key in parsed_json and key not in ["name", "email", "phone", "linkedin", "github", "personal_details"]:
+            value = parsed_json[key]
+            
+            if value and (isinstance(value, str) and value.strip() or isinstance(value, list) and value):
+                html_content += f"<h2>{safe_title(key)}</h2><div class='section-content'>"
+                
+                if isinstance(value, list):
+                    # Lists of simple strings (Skills, Projects, Strengths)
+                    if all(isinstance(item, str) for item in value):
+                        html_content += "<ul>"
+                        for item in value:
+                            if item.strip(): html_content += f"<li>{item}</li>"
+                        html_content += "</ul>"
+                        
+                    # Lists of structured data (Education, Experience, Certifications)
+                    elif all(isinstance(item, dict) for item in value):
+                        for item in value:
+                            if key == 'education':
+                                score_display = f"{item.get('score', '')} {item.get('type', '')}".strip()
+                                html_content += f"<h3>{item.get('degree', 'N/A')}</h3>"
+                                html_content += f"<div class='exp-details'>{item.get('college', 'N/A')}, {item.get('university', 'N/A')} | {item.get('from_year', '')} - {item.get('to_year', 'Present')}</div>"
+                                if score_display.strip(): html_content += f"<div class='exp-details'>Score: {score_display}</div>"
+                            
+                            elif key == 'experience':
+                                html_content += f"<h3>{item.get('role', 'N/A')} at {item.get('company', 'N/A')}</h3>"
+                                duration = f"{item.get('from_year', '')} - {item.get('to_year', 'Present')}"
+                                ctc = f" | CTC: {item.get('ctc', 'Confidential')}" if item.get('ctc') else ""
+                                html_content += f"<div class='exp-details'>{duration}{ctc}</div>"
+                                if item.get('responsibilities'): html_content += f"<p>{item['responsibilities']}</p>"
+                            
+                            elif key == 'certifications':
+                                html_content += f"<h3>{item.get('title', 'N/A')}</h3>"
+                                html_content += f"<div class='exp-details'>Issued by: {item.get('given_by', 'N/A')} | Date: {item.get('issue_date', 'N/A')}</div>"
+                    
+                # Single string values (Catch-all/Fallback)
+                elif isinstance(value, str):
+                    html_content += f"<p>{value}</p>"
+                    
+                html_content += "</div>"
+
+    html_content += "</body></html>"
+    return html_content
+    
+# --- END New Formatting Helper Functions for CV Builder ---
+# --- END HELPER FUNCTIONS ---
+
+
+@st.cache_data(show_spinner="Analyzing JD for metadata...")
+def extract_jd_metadata(jd_text):
+    """Mocks the extraction of key metadata (Role, Skills, Job Type) from JD text using LLM."""
+    if jd_text.startswith("[Error"):
+        return {"role": "Error", "key_skills": ["Error"], "job_type": "Error"}
+    
+    # Simple heuristic mock
+    role_match = re.search(r'(?:Role|Position|Title|Engineer|Scientist)[:\s\n]+([\w\s/-]+)', jd_text, re.IGNORECASE)
+    role = role_match.group(1).strip() if role_match else "Software Engineer (Mock)"
+    
+    # Extract Skills from JD content - ENHANCED SKILL LIST
+    skills_match = re.findall(r'(Python|Java|SQL|AWS|Docker|Kubernetes|React|Streamlit|Cloud|Data|ML|LLM|MLOps|Visualization|Deep Learning|TensorFlow|Pytorch)', jd_text, re.IGNORECASE)
+    
+    # Simple heuristic to improve role names if generic title is found
+    if 'data scientist' in jd_text.lower() or 'machine learning' in jd_text.lower():
+         role = "Data Scientist/ML Engineer"
+    elif 'cloud engineer' in jd_text.lower() or 'aws' in jd_text.lower() or 'gcp' in jd_text.lower():
+         role = "Cloud Engineer"
+    
+    job_type_match = re.search(r'(Full-time|Part-time|Contract|Remote|Hybrid)', jd_text, re.IGNORECASE)
+    job_type = job_type_match.group(1) if job_type_match else "Full-time (Mock)"
+    
+    return {
+        "role": role, 
+        "key_skills": list(set([s.lower() for s in skills_match])), # Keep all unique skills found
+        "job_type": job_type
+    }
+
+def extract_jd_from_linkedin_url(url):
+    """Mocks the extraction of JD content from a LinkedIn URL."""
+    if "linkedin.com/jobs" not in url:
+        return f"[Error] Invalid LinkedIn Job URL: {url}"
+
+    # Mock content based on URL structure
+    url_lower = url.lower()
+    
+    if "data-scientist" in url_lower:
+        role = "Data Scientist"
+        skills = ["Python", "SQL", "ML", "Data Analysis", "Pytorch", "Visualization"]
+        focus = "machine learning and statistical modeling"
         
-        <p>Generated by AI Dashboard on {date.today()}</p>
-    </body>
-    </html>
+    elif "cloud-engineer" in url_lower or "aws" in url_lower:
+        role = "Cloud Engineer"
+        skills = ["AWS", "Docker", "Kubernetes", "Cloud Services", "GCP", "Terraform"]
+        focus = "infrastructure as code and cloud deployment"
+        
+    elif "ml-engineer" in url_lower or "ai-engineer" in url_lower:
+        role = "AI/ML Engineer"
+        skills = ["MLOps", "LLM", "Deep Learning", "Python", "TensorFlow", "API Services"]
+        focus = "production-level AI/ML model development and deployment"
+        
+    else:
+        role = "Software Engineer"
+        skills = ["Java", "API", "SQL", "React", "JavaScript"]
+        focus = "full-stack application development"
+    
+    skills_str = ", ".join(skills)
+
+    return f"""
+    --- Simulated JD for: {role} ---
+    
+    Company: MockCorp
+    Location: Remote
+    
+    Job Summary:
+    We are seeking a highly skilled **{role}** to join our team. The ideal candidate will have expertise in {skills_str}. Must be focused on **{focus}**. This is a Full-time position.
+    
+    Responsibilities:
+    * Develop and maintain systems using **{skills[0]}** and **{skills[1]}** in a collaborative environment.
+    * Manage and deploy applications on **{skills[2]}** platforms.
+    * Collaborate with cross-functional teams.
+    
+    Qualifications:
+    * 3+ years of experience.
+    * Strong proficiency in **{skills[0]}** and analytical tools.
+    * Experience with cloud platforms (e.g., AWS).
+    ---
+    """
+    
+# --- EVALUATE JD FIT FUNCTION (LLM-DEPENDENT) ---
+def evaluate_jd_fit(job_description, parsed_json):
+    """
+    Evaluates how well a resume fits a given job description, 
+    including section-wise scores, by calling the Groq LLM API.
+    """
+    # Use the client object, which can be the real Groq client or the MockGroqClient
+    global client, GROQ_MODEL, GROQ_API_KEY
+    
+    if parsed_json.get('error') is not None: 
+         # This message is now explicitly caught in the match_batch_tab to set the score to 'Cannot evaluate'
+         return f"Cannot evaluate due to resume parsing errors: {parsed_json['error']}"
+
+
+    if isinstance(client, MockGroqClient) and not GROQ_API_KEY:
+         # In mock mode, use the special mock implementation for fit evaluation
+         response = client.chat().create(model=GROQ_MODEL, messages=[{"role": "user", "content": f"Evaluate how well the following resume content matches the provided job description: {job_description}"}])
+         return response.choices[0].message.content.strip()
+
+
+    if not job_description.strip(): return "Please paste a job description."
+
+    # Prepare relevant resume data for the LLM
+    relevant_resume_data = {
+        'Skills': parsed_json.get('skills', 'Not found or empty'),
+        'Experience': parsed_json.get('experience', 'Not found or empty'),
+        'Education': parsed_json.get('education', 'Not found or empty'),
+    }
+    resume_summary = json.dumps(relevant_resume_data, indent=2)
+
+    prompt = f"""Evaluate how well the following resume content matches the provided job description.
+    
+    Job Description: {job_description}
+    
+    Resume Sections for Analysis:
+    {resume_summary}
+    
+    Provide a detailed evaluation structured as follows:
+    1.  **Overall Fit Score:** A score out of 10.
+    2.  **Section Match Percentages:** A percentage score for the match in the key sections (Skills, Experience, Education).
+    3.  **Strengths/Matches:** Key points where the resume aligns well with the JD.
+    4.  **Gaps/Areas for Improvement:** Key requirements in the JD that are missing or weak in the resume.
+    5.  **Overall Summary:** A concise summary of the fit.
+    
+    **Format the output strictly as follows, ensuring the scores are easily parsable (use brackets or no brackets around scores, but they must be present):**
+    Overall Fit Score: [Score]/10
+    
+    --- Section Match Analysis ---
+    Skills Match: [XX]%
+    Experience Match: [YY]%
+    Education Match: [ZZ]%
+    
+    Strengths/Matches:
+    - Point 1
+    - Point 2
+    
+    Gaps/Areas for Improvement:
+    - Point 1
+    - Point 2
+    
+    Overall Summary: [Concise summary]
     """
 
-def format_parsed_json_to_markdown(parsed_data):
-    """Generates CV Markdown with simplified plain text output for structured sections.
-    
-    ORDER: Summary, Skills, Education, Experience, Certifications, Projects, Strengths
-    """
-    md = f"# **{parsed_data.get('name', 'CV Preview').upper()}**\n"
-    md += f"**Contact:** {parsed_data.get('email', 'N/A')} | {parsed_data.get('phone', 'N/A')} | [LinkedIn]({parsed_data.get('linkedin', '#')})\n"
-    md += "\n"
-    
-    # 1. SUMMARY
-    md += f"## **SUMMARY**\n---\n"
-    md += parsed_data.get('personal_details', 'No summary provided.') + "\n\n"
-    
-    # 2. SKILLS
-    md += "\n\n## **SKILLS**\n---\n"
-    md += "- " + "\n- ".join(parsed_data.get('skills', ['No skills listed']) if all(isinstance(s, str) for s in parsed_data.get('skills', [])) else ["Skills list structure mismatch"])
+    try:
+        response = client.chat.completions.create(
+            model=GROQ_MODEL, 
+            messages=[{"role": "user", "content": prompt}], 
+            temperature=0.3
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        error_output = f"AI Evaluation Error: Failed to connect or receive response from LLM. Error: {e}\n{traceback.format_exc()}"
+        return error_output
+# --- END EVALUATE JD FIT FUNCTION ---
 
-    # 3. EDUCATION
-    md += "\n\n## **EDUCATION**\n---\n"
-    education_md = []
-    for edu in parsed_data.get('education', []):
-        if isinstance(edu, dict):
-            score_display = f"{edu.get('score', 'N/A')} {edu.get('type', '')}".strip()
-            education_md.append(
-                f"**{edu.get('degree', 'N/A')}** ({score_display}) at {edu.get('college', 'N/A')} / {edu.get('university', 'N/A')}\n"
-                f"Duration: {edu.get('from_year', '')} - {edu.get('to_year', '')}"
+# --- Tab Content Functions ---
+    
+def resume_parsing_tab():
+    # --- TAB 1 (Now tab_parsing): Resume Parsing (MODIFIED: Added Paste Your CV option) ---
+    st.header("📄 Resume Upload and Parsing")
+    
+    # 1. Input Method Selection
+    input_method = st.radio(
+        "Select Input Method",
+        ["Upload File", "Paste Text"],
+        key="parsing_input_method"
+    )
+    
+    st.markdown("---")
+
+    # --- A. Upload File Method (UPDATED FILE TYPES HERE) ---
+    if input_method == "Upload File":
+        st.markdown("### 1. Upload Resume File") 
+        
+        # 🚨 File types expanded here
+        uploaded_file = st.file_uploader( 
+            "Choose PDF, DOCX, TXT, JSON, MD, CSV, XLSX file", 
+            type=["pdf", "docx", "txt", "json", "md", "csv", "xlsx", "markdown", "rtf"], 
+            accept_multiple_files=False, 
+            key='candidate_file_upload_main'
+        )
+        
+        st.markdown(
+            """
+            <div style='font-size: 10px; color: grey;'>
+            Supported File Types: PDF, DOCX, TXT, JSON, MARKDOWN, CSV, XLSX, RTF
+            </div>
+            """, 
+            unsafe_allow_html=True
+        )
+        st.markdown("---")
+
+        if "candidate_uploaded_resumes" not in st.session_state: st.session_state.candidate_uploaded_resumes = []
+        if "pasted_cv_text" not in st.session_state: st.session_state.pasted_cv_text = ""
+        
+        # --- File Management Logic ---
+        if uploaded_file is not None:
+            # Only store the single uploaded file if it's new
+            if not st.session_state.candidate_uploaded_resumes or st.session_state.candidate_uploaded_resumes[0].name != uploaded_file.name:
+                st.session_state.candidate_uploaded_resumes = [uploaded_file] 
+                st.session_state.pasted_cv_text = "" # Clear pasted text
+                st.toast("Resume file uploaded successfully.")
+        elif st.session_state.candidate_uploaded_resumes and uploaded_file is None:
+            # Case where the file is removed from the uploader
+            st.session_state.candidate_uploaded_resumes = []
+            st.session_state.parsed = {}
+            st.session_state.full_text = ""
+            st.session_state.excel_data = None
+            st.toast("Upload cleared.")
+        
+        file_to_parse = st.session_state.candidate_uploaded_resumes[0] if st.session_state.candidate_uploaded_resumes else None
+        
+        st.markdown("### 2. Parse Uploaded File")
+        
+        if file_to_parse:
+            if st.button(f"Parse and Load: **{file_to_parse.name}**", use_container_width=True):
+                with st.spinner(f"Parsing {file_to_parse.name}..."):
+                    result = parse_and_store_resume(file_to_parse, file_name_key='single_resume_candidate', source_type='file')
+                    
+                    if result.get('error') is None:
+                        st.session_state.parsed = result['parsed']
+                        st.session_state.full_text = result['full_text']
+                        st.session_state.excel_data = result['excel_data'] 
+                        st.session_state.parsed['name'] = result['name'] 
+                        # Also copy to CV Form Data for seamless transition if the user moves to the form builder
+                        st.session_state.cv_form_data = st.session_state.parsed.copy()
+                        st.session_state.cv_form_data['structured_experience'] = st.session_state.cv_form_data.get('experience', []) if all(isinstance(i, dict) for i in st.session_state.cv_form_data.get('experience', [])) else [] 
+                        st.session_state.cv_form_data['structured_certifications'] = st.session_state.cv_form_data.get('certifications', []) if all(isinstance(i, dict) for i in st.session_state.cv_form_data.get('certifications', [])) else []
+                        st.session_state.cv_form_data['structured_education'] = st.session_state.cv_form_data.get('education', []) if all(isinstance(i, dict) for i in st.session_state.cv_form_data.get('education', [])) else []
+                        
+                        clear_interview_state()
+                        st.success(f"✅ Successfully loaded and parsed **{result['name']}**.")
+                        st.info("The parsed data is ready for matching.")
+                        st.rerun() 
+                    else:
+                        st.error(f"Parsing failed for {file_to_parse.name}: {result['error']}")
+                        st.session_state.parsed = {"error": result['error'], "name": result['name']}
+                        st.session_state.full_text = result['full_text'] or ""
+                        st.session_state.excel_data = result['excel_data'] 
+        else:
+            st.info("No resume file is currently uploaded. Please upload a file above.")
+
+    # --- B. Paste Text Method (NEW) ---
+    else: # input_method == "Paste Text"
+        st.markdown("### 1. Paste Your CV Text")
+        
+        pasted_text = st.text_area(
+            "Copy and paste your entire CV or resume text here.",
+            value=st.session_state.get('pasted_cv_text', ''),
+            height=300,
+            key='pasted_cv_text_input'
+        )
+        st.session_state.pasted_cv_text = pasted_text # Update session state immediately
+        
+        st.markdown("---")
+        st.markdown("### 2. Parse Pasted Text")
+        
+        if pasted_text.strip():
+            if st.button("Parse and Load Pasted Text", use_container_width=True):
+                with st.spinner("Parsing pasted text..."):
+                    # Clear file upload state
+                    st.session_state.candidate_uploaded_resumes = []
+                    
+                    result = parse_and_store_resume(pasted_text, file_name_key='single_resume_candidate', source_type='text')
+                    
+                    if result.get('error') is None:
+                        st.session_state.parsed = result['parsed']
+                        st.session_state.full_text = result['full_text']
+                        st.session_state.excel_data = result['excel_data'] 
+                        st.session_state.parsed['name'] = result['name'] 
+                        
+                        # Also copy to CV Form Data for seamless transition
+                        st.session_state.cv_form_data = st.session_state.parsed.copy()
+                        st.session_state.cv_form_data['structured_experience'] = st.session_state.cv_form_data.get('experience', []) if all(isinstance(i, dict) for i in st.session_state.cv_form_data.get('experience', [])) else [] 
+                        st.session_state.cv_form_data['structured_certifications'] = st.session_state.cv_form_data.get('certifications', []) if all(isinstance(i, dict) for i in st.session_state.cv_form_data.get('certifications', [])) else []
+                        st.session_state.cv_form_data['structured_education'] = st.session_state.cv_form_data.get('education', []) if all(isinstance(i, dict) for i in st.session_state.cv_form_data.get('education', [])) else []
+                        
+                        clear_interview_state()
+                        st.success(f"✅ Successfully loaded and parsed **{result['name']}**.")
+                        st.info("The parsed data is ready for matching.") 
+                        st.rerun()
+                    else:
+                        st.error(f"Parsing failed: {result['error']}")
+                        st.session_state.parsed = {"error": result['error'], "name": result['name']}
+                        st.session_state.full_text = result['full_text'] or ""
+                        st.session_state.excel_data = result['excel_data'] 
+        else:
+            st.info("Please paste your CV text into the box above.")
+            
+    st.markdown("---")
+        
+# --- JD Management Tab Function ---
+        
+def jd_management_tab_candidate():
+    """JD Management Tab."""
+    st.header("📚 Manage Job Descriptions for Matching")
+    st.markdown("Add multiple JDs here to compare your resume against them in the next tabs.")
+    
+    if "candidate_jd_list" not in st.session_state: st.session_state.candidate_jd_list = []
+    st.markdown("---")
+    
+    # JD Type Radio Buttons
+    jd_type = st.radio("Select JD Type", ["Single JD", "Multiple JD"], key="jd_type_candidate", index=0)
+    st.markdown("### Add JD by:")
+    # Method Radio Buttons
+    method = st.radio("Choose Method", ["Upload File", "Paste Text", "LinkedIn URL"], key="jd_add_method_candidate", index=0) 
+    st.markdown("---")
+
+    # --- LinkedIn URL Section ---
+    if method == "LinkedIn URL":
+        with st.form("jd_url_form_candidate", clear_on_submit=True):
+            url_list = st.text_area("Enter one or more URLs (comma separated)" if jd_type == "Multiple JD" else "Enter URL", key="url_list_candidate")
+            if st.form_submit_button("Add JD(s) from URL", key="add_jd_url_btn_candidate"):
+                if url_list:
+                    urls = [u.strip() for u in url_list.split(",")] if jd_type == "Multiple JD" else [url_list.strip()]
+                    count = 0
+                    for url in urls:
+                        if not url: continue
+                        with st.spinner(f"Attempting JD extraction and metadata analysis for: {url}"):
+                            jd_text = extract_jd_from_linkedin_url(url)
+                            metadata = extract_jd_metadata(jd_text)
+                        
+                        if jd_text.startswith("[Error"):
+                            st.error(f"Failed to process {url}: {jd_text}")
+                            continue
+                            
+                        # Use role for a better name display
+                        name = f"JD for {metadata.get('role', 'Unknown Role')}"
+                        st.session_state.candidate_jd_list.append({"name": name, "content": jd_text, **metadata})
+                        count += 1
+                            
+                    if count > 0:
+                        st.success(f"✅ {count} JD(s) added successfully!")
+                        st.rerun() 
+                    else:
+                        st.error("No JDs were added successfully.")
+
+    # --- Paste Text Section ---
+    elif method == "Paste Text":
+        with st.form("jd_paste_form_candidate", clear_on_submit=True):
+            text_list = st.text_area("Paste one or more JD texts (separate by '---')" if jd_type == "Multiple JD" else "Paste JD text here", key="text_list_candidate")
+            if st.form_submit_button("Add JD(s) from Text", key="add_jd_text_btn_candidate"):
+                if text_list:
+                    texts = [t.strip() for t in text_list.split("---")] if jd_type == "Multiple JD" else [text_list.strip()]
+                    count = 0
+                    for i, text in enumerate(texts):
+                        if text:
+                            metadata = extract_jd_metadata(text)
+                            # Use extracted role for better naming
+                            name_base = metadata.get('role', f"Pasted JD {len(st.session_state.candidate_jd_list) + i + 1}")
+                            st.session_state.candidate_jd_list.append({"name": name_base, "content": text, **metadata})
+                            count += 1
+                    
+                    if count > 0:
+                        st.success(f"✅ {count} JD(s) added successfully!")
+                        st.rerun() 
+
+    # --- Upload File Section ---
+    elif method == "Upload File":
+        jd_file_types = ["pdf", "txt", "docx", "md", "json"]
+        # File uploader component
+        uploaded_files = st.file_uploader(
+            f"Upload JD file(s) ({', '.join(jd_file_types)})",
+            type=jd_file_types,
+            accept_multiple_files=(jd_type == "Multiple JD"),
+            key="jd_file_uploader_candidate"
+        )
+        files_to_process = uploaded_files if isinstance(uploaded_files, list) else ([uploaded_files] if uploaded_files else [])
+        
+        with st.form("jd_upload_form_candidate", clear_on_submit=False):
+            if files_to_process:
+                st.markdown("##### Files Selected:")
+                for file in files_to_process:
+                    st.markdown(f"&emsp;📄 **{file.name}** {round(file.size / (1024*1024), 2)}MB")
+                    
+            if st.form_submit_button("Add JD(s) from File", key="add_jd_file_btn_candidate"):
+                if not files_to_process:
+                    st.warning("Please upload file(s).")
+                    
+                count = 0
+                for file in files_to_process:
+                    if file:
+                        with st.spinner(f"Extracting content from {file.name}..."):
+                            file_type = get_file_type(file.name)
+                            file.seek(0)
+                            jd_text, _ = extract_content(file_type, file.getvalue(), file.name)
+                            
+                        if not jd_text.startswith("[Error"):
+                            metadata = extract_jd_metadata(jd_text)
+                            st.session_state.candidate_jd_list.append({"name": file.name, "content": jd_text, **metadata})
+                            count += 1
+                        else:
+                            st.error(f"Error extracting content from {file.name}: {jd_text}")
+                            
+                if count > 0:
+                    st.success(f"✅ {count} JD(s) added successfully!")
+                    st.rerun()
+                elif uploaded_files:
+                    st.error("No valid JD files were uploaded or content extraction failed.")
+
+    st.markdown("---")
+    # Display Added JDs
+    if st.session_state.candidate_jd_list:
+        
+        col_display_header, col_clear_button = st.columns([3, 1])
+        
+        with col_display_header: st.markdown("### ✅ Current JDs Added:")
+            
+        with col_clear_button:
+            if st.button("🗑️ Clear All JDs", key="clear_jds_candidate", use_container_width=True, help="Removes all currently loaded JDs."):
+                st.session_state.candidate_jd_list = []
+                if 'candidate_match_results' in st.session_state: del st.session_state['candidate_match_results']
+                # Clear JD Q&A history if it exists
+                if 'jd_chatbot_history' in st.session_state: del st.session_state['jd_chatbot_history']
+                st.success("All JDs and associated match results have been cleared.")
+                st.rerun() 
+
+        for idx, jd_item in enumerate(st.session_state.candidate_jd_list, 1):
+            title = jd_item['name']
+            display_title = title.replace("--- Simulated JD for: ", "")
+            with st.expander(f"**JD {idx}:** {display_title} | Role: {jd_item.get('role', 'N/A')}"):
+                st.markdown(f"**Job Type:** {jd_item.get('job_type', 'N/A')} | **Key Skills:** `{', '.join(jd_item.get('key_skills', ['N/A']))}`")
+                st.markdown("---")
+                st.text(jd_item['content'])
+    else:
+        st.info("No Job Descriptions added yet.")
+        
+# --- Batch Match Tab Function ---
+
+def jd_batch_match_tab():
+    """The Batch JD Match tab logic."""
+    st.header("🎯 Batch JD Match: Best Matches")
+    st.markdown("Compare your current resume against all saved job descriptions.")
+
+    # Determine if a resume/CV is ready
+    is_resume_parsed = (
+        st.session_state.get('parsed') is not None and
+        st.session_state.parsed.get('name') is not None and
+        st.session_state.parsed.get('error') is None
+    )
+    
+    # Check if we are running in Mock Mode
+    is_mock_mode = isinstance(client, MockGroqClient) and not GROQ_API_KEY
+    
+    if not is_resume_parsed:
+        st.warning("⚠️ Please **upload and parse your resume** in the 'Resume Parsing' tab or **generate data** in the 'CV Management' tab first.")
+        
+        # Display the specific parsing error if it exists
+        if st.session_state.get('parsed', {}).get('error') is not None:
+             st.error(f"Resume Parsing Error: {st.session_state.parsed.get('error')}")
+
+    elif not st.session_state.candidate_jd_list:
+        st.error("❌ Please **add Job Descriptions** in the 'JD Management' tab before running batch analysis.")
+        
+    elif not GROQ_API_KEY and not is_mock_mode:
+        st.error("Cannot use JD Match: GROQ_API_KEY is not configured.")
+        
+    elif is_mock_mode:
+        st.info("ℹ️ Running in **Mock LLM Mode** for fit evaluation. Results are simulated for consistency, but a valid GROQ_API_KEY is recommended for real AI analysis.")
+        
+    else:
+        # Check if the client is not the mock client and the key is set (i.e., we are using the real LLM)
+        if not hasattr(client, 'client_ready') or not client.client_ready:
+            st.warning("⚠️ LLM client setup failed or key is missing. Match analysis may not be accurate or available.")
+
+
+    if "candidate_match_results" not in st.session_state:
+        st.session_state.candidate_match_results = []
+
+    # 1. Get all available JD names
+    all_jd_names = [item['name'] for item in st.session_state.candidate_jd_list]
+    
+    # 2. Add multiselect widget
+    selected_jd_names = st.multiselect(
+        "Select Job Descriptions to Match Against",
+        options=all_jd_names,
+        default=all_jd_names, 
+        key='candidate_batch_jd_select'
+    )
+    
+    # 3. Filter the list of JDs based on selection
+    jds_to_match = [
+        jd_item for jd_item in st.session_state.candidate_jd_list 
+        if jd_item['name'] in selected_jd_names
+    ]
+    
+    if st.button(f"Run Match Analysis on **{len(jds_to_match)}** Selected JD(s)"):
+        st.session_state.candidate_match_results = []
+        
+        if not jds_to_match:
+            st.warning("Please select at least one Job Description to run the analysis.")
+            
+        elif not is_resume_parsed:
+             # The warning above will already be shown, but we prevent the loop from running
+             st.warning("Please **upload and parse your resume** successfully first.")
+
+        else:
+            resume_name = st.session_state.parsed.get('name', 'Uploaded Resume')
+            parsed_json = st.session_state.parsed
+            results_with_score = []
+
+            with st.spinner(f"Matching {resume_name}'s resume against {len(jds_to_match)} selected JD(s)..."):
+                
+                for jd_item in jds_to_match:
+                    jd_name = jd_item['name']
+                    jd_content = jd_item['content']
+
+                    try:
+                        # Call the LLM-dependent evaluation function
+                        fit_output = evaluate_jd_fit(jd_content, parsed_json) 
+                        
+                        # --- FIX: ROBUST REGEX EXTRACTION FOR SCORE AND PERCENTAGES ---
+                        overall_score_match = re.search(r'Overall Fit Score:\s*\[?\s*(\d+)\s*\]?\s*/10', fit_output, re.IGNORECASE)
+                        
+                        section_analysis_match = re.search(
+                            r'--- Section Match Analysis ---\s*(.*?)\s*(?:Strengths/Matches|Overall Summary):', 
+                            fit_output, re.DOTALL | re.IGNORECASE
+                        )
+                        
+                        skills_percent, experience_percent, education_percent = 'N/A', 'N/A', 'N/A'
+                        
+                        if section_analysis_match:
+                            section_text = section_analysis_match.group(1)
+                            
+                            skills_match = re.search(r'Skills\s*Match:\s*\[?\s*(\d+)%\s*\]?', section_text, re.IGNORECASE)
+                            experience_match = re.search(r'Experience\s*Match:\s*\[?\s*(\d+)%\s*\]?', section_text, re.IGNORECASE)
+                            education_match = re.search(r'Education\s*Match:\s*\[?\s*(\d+)%\s*\]?', section_text, re.IGNORECASE)
+                            
+                            if skills_match: skills_percent = skills_match.group(1)
+                            if experience_match: experience_percent = experience_match.group(1)
+                            if education_match: education_percent = education_match.group(1)
+                            
+                        overall_score = overall_score_match.group(1) if overall_score_match else 'N/A'
+                        
+                        # 4. Check for API/Mock/Parsing errors
+                        if "AI Evaluation Error" in fit_output:
+                            overall_score = "Error (API)"
+                        elif "Cannot evaluate" in fit_output:
+                            overall_score = "Error (Parse)"
+                            
+                        # --- END FIX ---
+
+                        results_with_score.append({
+                            "jd_name": jd_name,
+                            "overall_score": overall_score,
+                            "numeric_score": int(overall_score) if overall_score.isdigit() else -1, 
+                            "skills_percent": skills_percent,
+                            "experience_percent": experience_percent, 
+                            "education_percent": education_percent, 
+                            "full_analysis": fit_output
+                        })
+                    except Exception as e:
+                        # This catches parsing errors if the LLM output is malformed even if the API call succeeded.
+                        results_with_score.append({
+                            "jd_name": jd_name,
+                            "overall_score": "Error (Extract)",
+                            "numeric_score": -1, 
+                            "skills_percent": "Error",
+                            "experience_percent": "Error", 
+                            "education_percent": "Error", 
+                            "full_analysis": f"Error parsing LLM analysis for {jd_name}: {e}\nFull LLM Output:\n---\n{fit_output}\n---"
+                        })
+                        
+                # --- NEW RANKING LOGIC (Handles ties correctly) ---
+                results_with_score.sort(key=lambda x: x['numeric_score'], reverse=True)
+                
+                current_rank = 1
+                current_score = -1 
+                
+                for i, item in enumerate(results_with_score):
+                    # Check for ties in score
+                    if item['numeric_score'] < current_score:
+                        current_rank = i + 1
+                        current_score = item['numeric_score']
+                    elif i == 0:
+                        current_score = item['numeric_score']
+                        
+                    item['rank'] = current_rank
+                    
+                    # Clean up the temp score field
+                    if 'numeric_score' in item:
+                         del item['numeric_score'] 
+                    
+                st.session_state.candidate_match_results = results_with_score
+                # --- END NEW RANKING LOGIC ---
+                
+                st.success("Batch analysis complete! See results below.")
+                st.rerun() 
+
+
+    # 3. Display Results (UPDATED TO INCLUDE RANK)
+    if st.session_state.get('candidate_match_results'):
+        st.markdown("#### Match Results for Your Resume")
+        results_df = st.session_state.candidate_match_results
+        
+        display_data = []
+        for item in results_df:
+            full_jd_item = next((jd for jd in st.session_state.candidate_jd_list if jd['name'] == item['jd_name']), {})
+            
+            # Simple fix to make the role name more readable for display if it's the mock-extracted role
+            role_display = full_jd_item.get('role', 'N/A').replace("/ML Engineer", " Engineer")
+            
+            # Clean up score display based on error type
+            overall_score_display = item["overall_score"]
+            if overall_score_display.startswith("Error"):
+                overall_score_display = "Error" 
+
+            display_data.append({
+                "Rank": item.get("rank", "N/A"),
+                "Job Description (Ranked)": item["jd_name"].replace("--- Simulated JD for: ", ""),
+                "Role": role_display, 
+                "Job Type": full_jd_item.get('job_type', 'N/A'), 
+                "Fit Score (out of 10)": overall_score_display,
+                "Skills (%)": item.get("skills_percent", "N/A"),
+                "Experience (%)": item.get("experience_percent", "N/A"), 
+                "Education (%)": item.get("education_percent", "N/A"), 
+            })
+
+        st.dataframe(display_data, use_container_width=True)
+
+        st.markdown("##### Detailed Reports")
+        for item in results_df:
+            rank_display = f"Rank {item.get('rank', 'N/A')} | "
+            
+            header_score = item['overall_score']
+            if header_score.startswith("Error"):
+                 header_score = "Evaluation Error"
+                 
+            # Ensure the full analysis is displayed with markdown formatting
+            header_text = f"{rank_display}Report for **{item['jd_name'].replace('--- Simulated JD for: ', '')}** (Score: **{header_score}** | S: **{item.get('skills_percent', 'N/A')}%** | E: **{item.get('experience_percent', 'N/A')}%** | Edu: **{item.get('education_percent', 'N/A')}%**)"
+            with st.expander(header_text):
+                # Use st.code to display the LLM output with good formatting
+                st.code(item['full_analysis'], language='markdown')
+
+
+# --- New Filter JD Tab Function ---
+
+def filter_jd_tab_content():
+    st.header("🔍 Filter Job Descriptions by Criteria")
+    st.markdown("Use the filters below to narrow down your saved Job Descriptions.")
+
+    if not st.session_state.candidate_jd_list:
+        st.info("No Job Descriptions are currently loaded. Please add JDs in the 'JD Management' tab.")
+        if 'filtered_jds_display' not in st.session_state:
+            st.session_state.filtered_jds_display = []
+        return
+    
+    # --- Skill and Role Extraction ---
+    global DEFAULT_ROLES, DEFAULT_JOB_TYPES, STARTER_KEYWORDS
+    
+    unique_roles = sorted(list(set(
+        [item.get('role', 'General Analyst') for item in st.session_state.candidate_jd_list] + DEFAULT_ROLES
+    )))
+    unique_job_types = sorted(list(set(
+        [item.get('job_type', 'Full-time') for item in st.session_state.candidate_jd_list] + DEFAULT_JOB_TYPES
+    )))
+    
+    all_unique_skills = set(STARTER_KEYWORDS)
+    for jd in st.session_state.candidate_jd_list:
+        valid_skills = [
+            skill.strip() for skill in jd.get('key_skills', []) 
+            if isinstance(skill, str) and skill.strip()
+        ]
+        all_unique_skills.update(valid_skills)
+    
+    unique_skills_list = sorted(list(all_unique_skills))
+    
+    if not unique_skills_list:
+        unique_skills_list = ["No skills extracted from current JDs"]
+
+    all_jd_data = st.session_state.candidate_jd_list
+    # --- End Extraction ---
+
+    # --- Start Filter Form ---
+    with st.form(key="jd_filter_form"):
+        st.markdown("### Select Filters")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            selected_skills = st.multiselect(
+                "Skills Keywords (Select multiple)",
+                options=unique_skills_list,
+                default=st.session_state.get('last_selected_skills', []),
+                key="candidate_filter_skills_multiselect", 
+                help="Select one or more skills. JDs containing ANY of the selected skills will be shown."
             )
-    md += "\n\n".join(education_md)
-    
-    # 4. EXPERIENCE
-    md += "\n\n## **EXPERIENCE**\n---\n"
-    experience_md = []
-    for exp in parsed_data.get('experience', []):
-        if isinstance(exp, dict):
-            experience_md.append(
-                f"**{exp.get('role', 'N/A')}** at {exp.get('company', 'N/A')} ({exp.get('from_year', '')} - {exp.get('to_year', '')}).\n"
-                f"Responsibilities: {exp.get('responsibilities', 'N/A')}" 
+            
+        with col2:
+            selected_job_type = st.selectbox(
+                "Job Type",
+                options=["All Job Types"] + unique_job_types,
+                index=0, 
+                key="filter_job_type_select"
             )
-    md += "\n\n".join(experience_md)
-
-    # 5. CERTIFICATIONS
-    md += "\n\n## **CERTIFICATIONS**\n---\n"
-    certifications_md = []
-    for cert in parsed_data.get('certifications', []):
-        if isinstance(cert, dict):
-            certifications_md.append(
-                f"{cert.get('title', 'N/A')} - Issued by: {cert.get('given_by', 'N/A')}, Date: {cert.get('issue_date', 'N/A')}"
+            
+        with col3:
+            selected_role = st.selectbox(
+                "Role Title",
+                options=["All Roles"] + unique_roles,
+                index=0, 
+                key="filter_role_select"
             )
-    md += "- " + "\n- ".join(certifications_md)
 
-    # 6. PROJECTS
-    md += "\n\n## **PROJECTS**\n---\n"
-    md += "- " + "\n- ".join(parsed_data.get('projects', ['No projects listed']) if all(isinstance(p, str) for p in parsed_data.get('projects', [])) else ["Projects list structure mismatch"])
+        apply_filters_button = st.form_submit_button("✅ Apply Filters", type="primary", use_container_width=True)
 
-    # 7. STRENGTHS
-    md += "\n\n## **STRENGTHS**\n---\n"
-    md += "- " + "\n- ".join(parsed_data.get('strength', ['No strengths listed']) if all(isinstance(s, str) for s in parsed_data.get('strength', [])) else ["Strengths list structure mismatch"])
+    # --- Start Filtering Logic ---
+    if apply_filters_button:
+        
+        st.session_state.last_selected_skills = selected_skills
+
+        filtered_jds = []
+        selected_skills_lower = [k.strip().lower() for k in selected_skills]
+        
+        for jd in all_jd_data:
+            jd_role = jd.get('role', 'General Analyst')
+            jd_job_type = jd.get('job_type', 'Full-time')
+            jd_key_skills = [
+                s.lower() for s in jd.get('key_skills', []) 
+                if isinstance(s, str) and s.strip()
+            ]
+            
+            # 1. Role Filter
+            role_match = (selected_role == "All Roles") or (selected_role == jd_role)
+            
+            # 2. Job Type Filter
+            job_type_match = (selected_job_type == "All Job Types") or (selected_job_type == jd_job_type)
+            
+            # 3. Skills Filter
+            skill_match = True
+            if selected_skills_lower:
+                if not any(k in jd_key_skills for k in selected_skills_lower):
+                    skill_match = False
+            
+            if role_match and job_type_match and skill_match:
+                filtered_jds.append(jd)
+                
+        st.session_state.filtered_jds_display = filtered_jds
+        st.success(f"Filter applied! Found {len(filtered_jds)} matching Job Descriptions.")
+
+    # --- Display Results ---
+    st.markdown("---")
     
-    return md
+    if 'filtered_jds_display' not in st.session_state:
+        st.session_state.filtered_jds_display = []
+        
+    filtered_jds = st.session_state.filtered_jds_display
+    
+    st.subheader(f"Matching Job Descriptions ({len(filtered_jds)} found)")
+    
+    if filtered_jds:
+        display_data = []
+        for jd in filtered_jds:
+            display_data.append({
+                "Job Description Title": jd['name'].replace("--- Simulated JD for: ", ""),
+                "Role": jd.get('role', 'N/A'),
+                "Job Type": jd.get('job_type', 'N/A'),
+                "Key Skills": ", ".join(jd.get('key_skills', ['N/A'])[:5]) + "...",
+            })
+            
+        st.dataframe(display_data, use_container_width=True)
 
-# ==============================================================================
-# 2. TAB CONTENT FUNCTIONS (Updated CV Management with Mini-Forms)
-# ==============================================================================
+        st.markdown("##### Detailed View")
+        for idx, jd in enumerate(filtered_jds, 1):
+            with st.expander(f"JD {idx}: {jd['name'].replace('--- Simulated JD for: ', '')} - ({jd.get('role', 'N/A')})"):
+                st.markdown(f"**Job Type:** {jd.get('job_type', 'N/A')}")
+                st.markdown(f"**Extracted Skills:** {', '.join(jd.get('key_skills', ['N/A']))}")
+                st.markdown("---")
+                st.text(jd['content'])
+    elif st.session_state.candidate_jd_list and apply_filters_button:
+        st.info("No Job Descriptions match the selected criteria. Try broadening your filter selections.")
+    elif st.session_state.candidate_jd_list and not apply_filters_button:
+        st.info("Use the filters above and click **'Apply Filters'** to view matching Job Descriptions.")
+
+
+# --- New Parsed Data Tab (To house the removed content for testing) ---
+
+def parsed_data_tab():
+    st.header("✨ Parsed Resume Data View")
+    st.markdown("This tab displays the loaded candidate data and provides download options.")
+    st.markdown("---")
+
+    is_data_loaded_and_valid = (
+        st.session_state.get('parsed', {}).get('name') is not None and 
+        st.session_state.parsed.get('name') != "" and
+        st.session_state.get('parsed', {}).get('error') is None
+    )
+
+    if is_data_loaded_and_valid:
+        
+        candidate_name = st.session_state.parsed['name']
+        
+        # Determine the source display name
+        source_key = st.session_state.get('current_parsing_source_name', 'Form Builder/Unknown Source')
+        if source_key == "Pasted_Text":
+            source_display = "Pasted CV Data"
+        elif source_key == "Form Builder/Unknown Source":
+            source_display = "Form Builder Generated Data"
+        else:
+            source_display = source_key.replace('_', ' ').replace('-', ' ') 
+
+        # Calculate filenames and URIs once
+        base_filename = f"{candidate_name.replace(' ', '_')}_Parsed_Resume"
+        parsed_json_data = json.dumps(st.session_state.parsed, indent=4)
+        parsed_markdown_data = st.session_state.full_text
+        
+        json_filename = f"{base_filename}.json"
+        md_filename = f"{base_filename}.md"
+        html_filename = f"{base_filename}.html"
+        
+        json_data_uri = get_download_link(parsed_json_data, json_filename, 'json')
+        md_data_uri = get_download_link(parsed_markdown_data, md_filename, 'markdown')
+        html_data_uri = get_download_link(parsed_markdown_data, html_filename, 'html')
+        
+        
+        tab_markdown, tab_json, tab_download = st.tabs([
+            "📄 Markdown View", 
+            "💾 JSON View", 
+            "⬇️ PDF/HTML Download"
+        ])
+
+        # --- Markdown View Tab ---
+        with tab_markdown:
+            st.markdown(f"**Candidate:** **{candidate_name}**")
+            st.caption(f"Source: {source_display}")
+            st.markdown("---")
+            st.markdown("### Resume Content in Raw Markdown Format (Used by AI)")
+            st.markdown(st.session_state.full_text)
+            
+            if st.session_state.excel_data:
+                 st.markdown("### Extracted Spreadsheet Data (if applicable)")
+                 st.json(st.session_state.excel_data)
+                 
+            st.markdown("---")
+            st.markdown("##### Download Raw Markdown Data")
+            render_download_button(
+                md_data_uri, 
+                md_filename, 
+                f"⬇️ Download Raw Markdown (.md)", 
+                'markdown'
+            )
+
+
+        # --- JSON View Tab ---
+        with tab_json:
+            st.markdown(f"**Candidate:** **{candidate_name}**")
+            st.caption(f"Source: {source_display}")
+            st.markdown("---")
+            st.markdown("### Structured Data in JSON Format")
+            st.json(st.session_state.parsed)
+
+            st.markdown("---")
+            st.markdown("##### Download JSON Data")
+            render_download_button(
+                json_data_uri, 
+                json_filename, 
+                f"💾 Download JSON (.json)", 
+                'json'
+            )
+
+        # --- Download Tab ---
+        with tab_download:
+            
+            st.markdown("### Download Viewable Document")
+            st.info("This download provides the data in an HTML file that can be easily viewed or printed/saved as a PDF.")
+            
+            col_html = st.columns(1)[0]
+
+            with col_html:
+                st.markdown(f"**{html_filename.replace('.html', '.pdf/html')}**", help="Viewable document format.")
+                
+                # We need the formatted markdown/HTML for this, not the raw text
+                html_output = generate_cv_html(st.session_state.parsed)
+                html_data_uri_formatted = get_download_link(html_output, html_filename, 'html')
+                
+                render_download_button(
+                    html_data_uri_formatted, 
+                    html_filename, 
+                    f"📄 Download HTML (PDF Sim.)", 
+                    'html'
+                )
+                
+            st.markdown("---")
+            st.info("For structured data (JSON) or raw text (Markdown), please check their respective viewing tabs.")
+
+    else:
+        st.warning(f"**Status:** ❌ **No Valid Resume Data Loaded**")
+        # Display the actual error message if one exists
+        if st.session_state.get('parsed', {}).get('error') is not None:
+             st.error(f"Last Parsing Error: {st.session_state.parsed['error']}")
+        st.info("Please successfully parse a resume in the **Resume Parsing** tab or **Generate** data in the **CV Management** tab.")
+
+
+# --------------------------------------------------------------------------------------
+# CV MANAGEMENT TAB CONTENT (User Provided Code - Integrated & Modified)
+# --------------------------------------------------------------------------------------
 
 def cv_management_tab_content():
     st.header("📝 Prepare Your CV")
@@ -375,6 +1562,7 @@ def cv_management_tab_content():
     st.info("Fill out the details below. For dynamic sections (**Education, Certifications, Experience**), enter the details and click the **Add** button in the corresponding dedicated mini-form to save the entry.")
 
     # --- Session State Initialization for CV Builder ---
+    # NOTE: The default_parsed object needs to be defined within or globally accessible.
     default_parsed = {
         "name": "", "email": "", "phone": "", "linkedin": "", "github": "",
         "skills": [], "experience": [], "education": [], "certifications": [], 
@@ -384,30 +1572,21 @@ def cv_management_tab_content():
         "structured_education": []
     }
     
+    # Ensure all required session state keys are initialized, prioritizing existing loaded data
     if "cv_form_data" not in st.session_state:
         if st.session_state.get('parsed', {}).get('name') and st.session_state.parsed.get('name') != "":
             st.session_state.cv_form_data = st.session_state.parsed.copy()
-            # Ensure the structured lists are present
-            if 'structured_experience' not in st.session_state.cv_form_data:
-                st.session_state.cv_form_data['structured_experience'] = st.session_state.cv_form_data.get('experience', []) if all(isinstance(i, dict) for i in st.session_state.cv_form_data.get('experience', [])) else [] 
-            if 'structured_certifications' not in st.session_state.cv_form_data:
-                st.session_state.cv_form_data['structured_certifications'] = st.session_state.cv_form_data.get('certifications', []) if all(isinstance(i, dict) for i in st.session_state.cv_form_data.get('certifications', [])) else []
-            if 'structured_education' not in st.session_state.cv_form_data:
-                st.session_state.cv_form_data['structured_education'] = st.session_state.cv_form_data.get('education', []) if all(isinstance(i, dict) for i in st.session_state.cv_form_data.get('education', [])) else []
+            # Ensure the structured lists are present for editing
+            st.session_state.cv_form_data['structured_experience'] = st.session_state.cv_form_data.get('experience', []) if all(isinstance(i, dict) for i in st.session_state.cv_form_data.get('experience', [])) else [] 
+            st.session_state.cv_form_data['structured_certifications'] = st.session_state.cv_form_data.get('certifications', []) if all(isinstance(i, dict) for i in st.session_state.cv_form_data.get('certifications', [])) else []
+            st.session_state.cv_form_data['structured_education'] = st.session_state.cv_form_data.get('education', []) if all(isinstance(i, dict) for i in st.session_state.cv_form_data.get('education', [])) else []
         else:
-            st.session_state.cv_form_data = default_parsed
+            st.session_state.cv_form_data = default_parsed.copy() # Use a copy of the default
             
-    # CRITICAL: Ensure lists are initialized correctly
-    if 'structured_experience' not in st.session_state.cv_form_data:
-         st.session_state.cv_form_data['structured_experience'] = []
-    if 'structured_certifications' not in st.session_state.cv_form_data:
-         st.session_state.cv_form_data['structured_certifications'] = []
-    if 'structured_education' not in st.session_state.cv_form_data:
-         st.session_state.cv_form_data['structured_education'] = []
-    if not isinstance(st.session_state.cv_form_data.get('skills'), list):
-         st.session_state.cv_form_data['skills'] = []
-    if not isinstance(st.session_state.cv_form_data.get('projects'), list):
-         st.session_state.cv_form_data['projects'] = []
+    # CRITICAL: Ensure lists are initialized correctly, even if the user manually changes them outside of the structured keys
+    for key in ['structured_experience', 'structured_certifications', 'structured_education', 'skills', 'projects', 'strength']:
+         if not isinstance(st.session_state.cv_form_data.get(key), list):
+             st.session_state.cv_form_data[key] = []
 
     
     current_year = date.today().year
@@ -418,7 +1597,7 @@ def cv_management_tab_content():
     # ==============================================================
     with st.form("cv_builder_form", clear_on_submit=False):
         
-        # --- 1. PERSONAL & CONTACT DETAILS ---
+        # --- 1. PERSONAL & CONTACT DETAILS (Summary) ---
         st.subheader("1. Personal, Contact, and Summary Details")
         col1, col2, col3 = st.columns(3)
         with col1:
@@ -465,7 +1644,7 @@ def cv_management_tab_content():
         st.markdown("---")
         st.subheader("2. Key Skills (One Item per Line)")
 
-        skills_text = "\n".join(st.session_state.cv_form_data.get('skills', []) if all(isinstance(s, str) for s in st.session_state.cv_form_data.get('skills', [])) else [])
+        skills_text = "\n".join(st.session_state.cv_form_data.get('skills', []))
         new_skills_text = st.text_area(
             "Technical and Soft Skills", 
             value=skills_text,
@@ -480,7 +1659,6 @@ def cv_management_tab_content():
         st.info("Use the dedicated mini-form below to add each Education entry.")
         
         # --- 4. DYNAMIC PROFESSIONAL EXPERIENCE MANAGEMENT (Placeholder & Mini-Form) ---
-        # MOVED HERE (after Education) as requested in previous iterations
         st.markdown("---")
         st.subheader("4. Dynamic Professional Experience Management")
         st.info("Use the dedicated mini-form below to add each Experience entry.")
@@ -493,7 +1671,7 @@ def cv_management_tab_content():
         # --- 6. PROJECTS (Static inside the single form) ---
         st.markdown("---")
         st.subheader("6. Projects (One Item per Line)")
-        projects_text = "\n".join(st.session_state.cv_form_data.get('projects', []) if all(isinstance(p, str) for p in st.session_state.cv_form_data.get('projects', [])) else [])
+        projects_text = "\n".join(st.session_state.cv_form_data.get('projects', []))
         new_projects_text = st.text_area(
             "Projects (Name, Description, Technologies)", 
             value=projects_text,
@@ -505,7 +1683,7 @@ def cv_management_tab_content():
         # --- 7. STRENGTHS (Static inside the single form) ---
         st.markdown("---")
         st.subheader("7. Strengths (One Item per Line)")
-        strength_text = "\n".join(st.session_state.cv_form_data.get('strength', []) if all(isinstance(s, str) for s in st.session_state.cv_form_data.get('strength', [])) else [])
+        strength_text = "\n".join(st.session_state.cv_form_data.get('strength', []))
         new_strength_text = st.text_area(
             "Key Personal Qualities", 
             value=strength_text,
@@ -525,6 +1703,8 @@ def cv_management_tab_content():
     if submit_form_button:
         if not st.session_state.cv_form_data['name'] or not st.session_state.cv_form_data['email']:
             st.error("Please fill in at least your **Full Name** and **Email Address**.")
+            # We must use st.stop() or return to prevent the rest of the logic from running inside the form block
+            # Since the form is already submitted, we'll return to prevent the state update
             return
 
         # 1. Synchronize the structured lists into the main keys for AI consumption
@@ -535,7 +1715,7 @@ def cv_management_tab_content():
         # 2. Update the main parsed state
         st.session_state.parsed = st.session_state.cv_form_data.copy()
         
-        # 3. Create a placeholder full_text for the AI tools
+        # 3. Create a placeholder full_text for the AI tools (using the updated structured formatting)
         compiled_text = ""
         EXCLUDE_KEYS = ["structured_experience", "structured_certifications", "structured_education"] 
         
@@ -543,24 +1723,35 @@ def cv_management_tab_content():
             if k in EXCLUDE_KEYS: continue
             
             if v and (isinstance(v, str) and v.strip() or isinstance(v, list) and v):
-                compiled_text += f"{k.replace('_', ' ').title()}:\n"
+                # Use markdown header style for better AI consumption of sections
+                compiled_text += f"## {k.replace('_', ' ').title()}\n" 
                 if isinstance(v, list):
                     if all(isinstance(item, dict) for item in v):
-                         compiled_text += "\n".join([json.dumps(item) for item in v]) + "\n\n"
+                         # If it's structured data (Exp, Edu, Certs), format it as structured text
+                         formatted_list = []
+                         for item in v:
+                             if k == 'education':
+                                 formatted_list.append(f"Degree: {item.get('degree')} | College: {item.get('college')} | Duration: {item.get('from_year')} - {item.get('to_year')} | Score: {item.get('score')} {item.get('type')}")
+                             elif k == 'experience':
+                                 formatted_list.append(f"Role: {item.get('role')} at {item.get('company')} | Duration: {item.get('from_year')} - {item.get('to_year')} | Responsibilities: {item.get('responsibilities')}")
+                             elif k == 'certifications':
+                                 formatted_list.append(f"Title: {item.get('title')} | Issued by: {item.get('given_by')} | Date: {item.get('issue_date')}")
+                             else: # Projects, Strengths (if they somehow became dicts)
+                                 formatted_list.append(json.dumps(item))
+                         compiled_text += "\n".join([f"* {item}" for item in formatted_list]) + "\n\n"
                     elif all(isinstance(item, str) for item in v):
-                        compiled_text += "\n".join([f"- {item}" for item in v]) + "\n\n"
+                        compiled_text += "\n".join([f"* {item}" for item in v]) + "\n\n"
                 else:
                     compiled_text += str(v) + "\n\n"
                     
         st.session_state.full_text = compiled_text
-        
-        # 4. Reset matching/interview state
-        st.session_state.candidate_match_results = []
-        st.session_state.interview_qa = []
-        st.session_state.evaluation_report = ""
+        st.session_state.current_parsing_source_name = "Form Builder" # Update source name
+
+        # 4. Reset matching/interview state (Stubs)
+        clear_interview_state()
 
         st.success(f"✅ CV data for **{st.session_state.parsed['name']}** successfully generated and loaded! All major sections are stored as **structured data**.")
-        
+        st.rerun() # Rerun to update preview/download tabs
     
     # ==============================================================
     # --- 3A. DYNAMIC EDUCATION MANAGEMENT MINI-FORM ---
@@ -593,14 +1784,13 @@ def cv_management_tab_content():
         
         st.session_state.cv_form_data['structured_education'].append(new_entry)
         
-        # Clear form input fields
+        # Clear form input fields by setting their session state key values
+        # NOTE: Cannot clear the select boxes easily with this method without rerunning the main form block,
+        # but clearing the text fields gives the immediate feedback of the item being added.
         st.session_state["mini_edu_degree_key"] = ""
         st.session_state["mini_edu_college_key"] = ""
         st.session_state["mini_edu_university_key"] = ""
-        st.session_state["mini_edu_from_year_key"] = str(date.today().year) 
-        st.session_state["mini_edu_to_year_key"] = "Present" 
         st.session_state["mini_edu_score_key"] = ""
-        st.session_state["mini_edu_type_key"] = "CGPA"
         
         st.toast(f"Education: {new_entry['degree']} added.")
         st.rerun() 
@@ -612,7 +1802,6 @@ def cv_management_tab_content():
             st.toast(f"Education '{removed_degree}' removed.")
             st.rerun() 
 
-    # Find the Education header from the main form and place the mini-form right after it.
     st.markdown("<h5 style='color: #4CAF50;'>Education Entry Form</h5>", unsafe_allow_html=True)
     with st.form("add_education_form"):
         st.markdown("##### New Education Entry")
@@ -637,6 +1826,7 @@ def cv_management_tab_content():
         with col_st:
             st.selectbox("Type", options=["CGPA", "Percentage", "Grade"], key="mini_edu_type_key")
             
+        # The submit button is now type="secondary" and uses on_click
         st.form_submit_button("➕ Add This Education Entry", on_click=add_education_entry, use_container_width=True, type="secondary")
         
     st.markdown("##### Current Education Entries")
@@ -657,7 +1847,7 @@ def cv_management_tab_content():
         
         
     # ==============================================================
-    # --- 4A. DYNAMIC EXPERIENCE MANAGEMENT MINI-FORM (MOVED HERE) ---
+    # --- 4A. DYNAMIC EXPERIENCE MANAGEMENT MINI-FORM ---
     # ==============================================================
     st.markdown("<h5 style='color: #4CAF50;'>Professional Experience Entry Form</h5>", unsafe_allow_html=True)
     
@@ -688,8 +1878,6 @@ def cv_management_tab_content():
         # Clear form input fields
         st.session_state["mini_exp_company_key"] = ""
         st.session_state["mini_exp_role_key"] = ""
-        st.session_state["mini_exp_from_year_key"] = str(date.today().year)
-        st.session_state["mini_exp_to_year_key"] = "Present"
         st.session_state["mini_exp_ctc_key"] = ""
         st.session_state["mini_exp_responsibilities_key"] = ""
         
@@ -741,7 +1929,7 @@ def cv_management_tab_content():
         
     
     # ==============================================================
-    # --- 5A. DYNAMIC CERTIFICATIONS MANAGEMENT MINI-FORM (Order 3) ---
+    # --- 5A. DYNAMIC CERTIFICATIONS MANAGEMENT MINI-FORM ---
     # ==============================================================
     
     st.markdown("<h5 style='color: #4CAF50;'>Certification Entry Form</h5>", unsafe_allow_html=True)
@@ -767,7 +1955,6 @@ def cv_management_tab_content():
         # Clear form input fields
         st.session_state["mini_cert_title_key"] = ""
         st.session_state["mini_cert_given_by_key"] = ""
-        st.session_state["mini_cert_issue_date_key"] = str(date.today().year)
         
         st.toast(f"Certificate: {new_entry['title']} added.")
         st.rerun() 
@@ -814,16 +2001,17 @@ def cv_management_tab_content():
     
     if st.session_state.get('parsed', {}).get('name') and st.session_state.parsed.get('name') != "":
         
-        EXCLUDE_KEYS_PREVIEW = ["structured_experience", "structured_certifications", "structured_education"]
+        EXCLUDE_KEYS_PREVIEW = ["structured_experience", "structured_certifications", "structured_education", "error"]
         filled_data_for_preview = {
             k: v for k, v in st.session_state.parsed.items() 
             if v and k not in EXCLUDE_KEYS_PREVIEW and (isinstance(v, str) and v.strip() or isinstance(v, list) and v)
         }
         
-        tab_markdown, tab_json, tab_pdf = st.tabs(["📝 Markdown View", "💾 JSON View", "⬇️ PDF/HTML Download"])
+        tab_markdown, tab_json, tab_pdf = st.tabs(["📝 Formatted View", "💾 Structured JSON", "⬇️ Download Options"])
 
         with tab_markdown:
-            # Uses the updated function for order: Summary, Skills, Education, Experience, Certifications, Projects, Strengths
+            st.markdown("#### Formatted CV Document Preview")
+            # Uses the function for order: Summary, Skills, Education, Experience, Certifications, Projects, Strengths
             cv_markdown_preview = format_parsed_json_to_markdown(filled_data_for_preview)
             st.markdown(cv_markdown_preview)
 
@@ -836,6 +2024,7 @@ def cv_management_tab_content():
             )
 
         with tab_json:
+            st.markdown("#### Raw Structured Data Preview")
             st.json(filled_data_for_preview)
             st.info("This is the raw, structured data used by the AI tools.")
 
@@ -849,14 +2038,16 @@ def cv_management_tab_content():
             )
 
         with tab_pdf:
-            st.markdown("### Download CV as HTML (Print-to-PDF)")
-            st.info("Click the button below to download an HTML file. Open the file in your browser and use the browser's **'Print'** function, selecting **'Save as PDF'** to create your final CV document.")
+            st.markdown("#### Download CV in Standardized Formats")
             
-            # Uses the updated function for order: Summary, Skills, Education, Experience, Certifications, Projects, Strengths
+            # --- HTML Download (Print-to-PDF) ---
+            st.markdown("##### Print-Ready HTML (Use Browser's Print > Save as PDF)")
+            st.info("Download the HTML file, open it in a browser, and use the browser's **'Print'** function (Ctrl+P or Cmd+P) selecting **'Save as PDF'** to create your final CV document.")
+            
             html_output = generate_cv_html(filled_data_for_preview)
 
             st.download_button(
-                label="⬇️ Download CV as Print-Ready HTML File (for PDF conversion)",
+                label="📄 Download HTML File",
                 data=html_output,
                 file_name=f"{st.session_state.parsed.get('name', 'Generated_CV').replace(' ', '_')}_CV_Document.html",
                 mime="text/html",
@@ -864,759 +2055,327 @@ def cv_management_tab_content():
             )
             
             st.markdown("---")
-            st.markdown("### Raw Text Data Download (for utility)")
+            st.markdown("##### Raw Text Data Download (for utility/parsing)")
             st.download_button(
                 label="⬇️ Download All CV Data as Raw Text (.txt)",
                 data=st.session_state.full_text,
                 file_name=f"{st.session_state.parsed.get('name', 'Generated_CV').replace(' ', '_')}_Raw_Data.txt",
                 mime="text/plain",
                 key="download_cv_txt_final"
-            )
-            
+            )     
     else:
         st.info("Please fill out the main form and click 'Generate and Load ALL CV Data' or parse a resume in the 'Resume Parsing' tab to see the preview and download options.")
 
+# --------------------------------------------------------------------------------------
+# END CV MANAGEMENT TAB CONTENT
+# --------------------------------------------------------------------------------------
 
-def filter_jd_tab_content():
-    st.header("🔍 Filter Job Descriptions by Criteria")
-    st.markdown("Use the filters below to narrow down your saved Job Descriptions.")
+# --------------------------------------------------------------------------------------
+# CHATBOT FUNCTIONALITY
+# --------------------------------------------------------------------------------------
 
-    if not st.session_state.candidate_jd_list:
-        st.info("No Job Descriptions are currently loaded. Please add JDs in the 'JD Management' tab.")
-        if 'filtered_jds_display' not in st.session_state:
-            st.session_state.filtered_jds_display = []
+# 1. Resume Q&A Function (Original)
+def qa_on_resume(question):
+    """Chatbot for Resume (Q&A) using LLM."""
+    global client, GROQ_MODEL, GROQ_API_KEY
+    
+    if not GROQ_API_KEY and not isinstance(client, MockGroqClient):
+        return "AI Chatbot Disabled: GROQ_API_KEY not set."
+        
+    parsed_json = st.session_state.parsed
+    full_text = st.session_state.full_text
+    
+    if not parsed_json or parsed_json.get('name') == "" or parsed_json.get('error') is not None:
+         return "Please parse a valid resume or generate data in the CV Management tab first to enable the Q&A feature."
+
+    prompt = f"""Given the following resume information:
+    Resume Text: {full_text}
+    Parsed Resume Data (JSON): {json.dumps(parsed_json, indent=2)}
+    Answer the following question about the resume concisely and directly.
+    If the information is not present, state that clearly and briefly (e.g., 'Information not found on the resume.').
+    Question: {question}
+    """
+    
+    try:
+        response = client.chat.completions.create(
+            model=GROQ_MODEL, 
+            messages=[{"role": "user", "content": prompt}], 
+            temperature=0.4
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        return f"AI Chatbot Error: Failed to get response from LLM. Error: {e}"
+
+# 2. JD Q&A Function (New)
+def qa_on_jd(question, jd_content):
+    """Chatbot for Job Description (Q&A) using LLM."""
+    global client, GROQ_MODEL, GROQ_API_KEY
+    
+    if not GROQ_API_KEY and not isinstance(client, MockGroqClient):
+        return "AI Chatbot Disabled: GROQ_API_KEY not set."
+
+    if not jd_content or not jd_content.strip():
+        return "Please select a valid Job Description to chat about."
+
+    prompt = f"""Given the following Job Description (JD) text:
+    Job Description Text: {jd_content}
+    Answer the following question about the Job Description concisely and directly.
+    If the information is not present, state that clearly and briefly (e.g., 'The JD does not specify that information.').
+    Question: {question}
+    """
+    
+    try:
+        response = client.chat.completions.create(
+            model=GROQ_MODEL, 
+            messages=[{"role": "user", "content": prompt}], 
+            temperature=0.4
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        return f"AI Chatbot Error: Failed to get response from LLM. Error: {e}"
+
+# 3. Resume Q&A Content Tab
+def resume_qa_content():
+    """Content for the Resume Q&A sub-tab."""
+    st.subheader("👤 Resume Q&A Chatbot")
+    st.markdown("Ask specific questions about the currently loaded resume.")
+
+    is_data_loaded_and_valid = (
+        st.session_state.get('parsed', {}).get('name') is not None and 
+        st.session_state.parsed.get('name') != "" and
+        st.session_state.get('parsed', {}).get('error') is None
+    )
+    
+    if not is_data_loaded_and_valid:
+        st.warning("⚠️ **Q&A Disabled:** Please parse a valid resume or generate CV data first.")
         return
     
-    unique_roles = sorted(list(set(
-        [item.get('role', 'General Analyst') for item in st.session_state.candidate_jd_list] + DEFAULT_ROLES
-    )))
-    unique_job_types = sorted(list(set(
-        [item.get('job_type', 'Full-time') for item in st.session_state.candidate_jd_list] + DEFAULT_JOB_TYPES
-    )))
-    
-    STARTER_KEYWORDS = {
-        "Python", "MySQL", "GCP", "cloud computing", "ML", 
-        "API services", "LLM integration", "JavaScript", "SQL", "AWS" 
-    }
-    
-    all_unique_skills = set(STARTER_KEYWORDS)
-    for jd in st.session_state.candidate_jd_list:
-        valid_skills = [
-            skill.strip() for skill in jd.get('key_skills', []) 
-            if isinstance(skill, str) and skill.strip()
-        ]
-        all_unique_skills.update(valid_skills)
-    
-    unique_skills_list = sorted(list(all_unique_skills))
-    
-    if not unique_skills_list:
-        unique_skills_list = ["No skills extracted from current JDs"]
+    if "resume_chatbot_history" not in st.session_state:
+        st.session_state.resume_chatbot_history = []
 
-    all_jd_data = st.session_state.candidate_jd_list
-
-    with st.form(key="jd_filter_form"):
-        st.markdown("### Select Filters")
-        
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            selected_skills = st.multiselect(
-                "Skills Keywords (Select multiple)",
-                options=unique_skills_list,
-                default=st.session_state.get('last_selected_skills', []),
-                key="candidate_filter_skills_multiselect", 
-                help="Select one or more skills. JDs containing ANY of the selected skills will be shown."
-            )
-            
-        with col2:
-            selected_job_type = st.selectbox(
-                "Job Type",
-                options=["All Job Types"] + unique_job_types,
-                index=0, 
-                key="filter_job_type_select"
-            )
-            
-        with col3:
-            selected_role = st.selectbox(
-                "Role Title",
-                options=["All Roles"] + unique_roles,
-                index=0, 
-                key="filter_role_select"
-            )
-
-        apply_filters_button = st.form_submit_button("✅ Apply Filters", type="primary", use_container_width=True)
-
-    if apply_filters_button:
-        st.session_state.last_selected_skills = selected_skills
-
-        filtered_jds = []
-        selected_skills_lower = [k.strip().lower() for k in selected_skills]
-        
-        for jd in all_jd_data:
-            jd_role = jd.get('role', 'General Analyst')
-            jd_job_type = jd.get('job_type', 'Full-time')
-            jd_key_skills = [
-                s.lower() for s in jd.get('key_skills', []) 
-                if isinstance(s, str) and s.strip()
-            ]
-            
-            role_match = (selected_role == "All Roles") or (selected_role == jd_role)
-            job_type_match = (selected_job_type == "All Job Types") or (selected_job_type == jd_job_type)
-            
-            skill_match = True
-            if selected_skills_lower:
-                if not any(k in jd_key_skills for k in selected_skills_lower):
-                    skill_match = False
-            
-            if role_match and job_type_match and skill_match:
-                filtered_jds.append(jd)
-                
-        st.session_state.filtered_jds_display = filtered_jds
-        st.success(f"Filter applied! Found {len(filtered_jds)} matching Job Descriptions.")
-
+    st.info(f"Chatting about: **{st.session_state.parsed['name']}**")
     st.markdown("---")
     
-    if 'filtered_jds_display' not in st.session_state:
-        st.session_state.filtered_jds_display = []
+    # Display Chat History
+    for message in st.session_state.resume_chatbot_history:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    # Chat Input and Logic
+    if prompt := st.chat_input("Ask a question about the resume...", key="resume_qa_input"):
+        # Add user message to history
+        st.session_state.resume_chatbot_history.append({"role": "user", "content": prompt})
         
-    filtered_jds = st.session_state.filtered_jds_display
-    
-    st.subheader(f"Matching Job Descriptions ({len(filtered_jds)} found)")
-    
-    if filtered_jds:
-        display_data = []
-        for jd in filtered_jds:
-            display_data.append({
-                "Job Description Title": jd['name'].replace("--- Simulated JD for: ", ""),
-                "Role": jd.get('role', 'N/A'),
-                "Job Type": jd.get('job_type', 'N/A'),
-                "Key Skills": ", ".join(jd.get('key_skills', ['N/A'])[:5]) + "...",
-            })
+        # Display user message
+        with st.chat_message("user"):
+            st.markdown(prompt)
+        
+        # Get AI response
+        with st.spinner("Thinking..."):
+            ai_response = qa_on_resume(prompt)
+
+        # Display AI response and add to history
+        with st.chat_message("assistant"):
+            st.markdown(ai_response)
             
-        st.dataframe(display_data, use_container_width=True)
+        st.session_state.resume_chatbot_history.append({"role": "assistant", "content": ai_response})
+        st.rerun()
 
-        st.markdown("##### Detailed View")
-        for idx, jd in enumerate(filtered_jds, 1):
-            with st.expander(f"JD {idx}: {jd['name'].replace('--- Simulated JD for: ', '')} - ({jd.get('role', 'N/A')})"):
-                st.markdown(f"**Job Type:** {jd.get('job_type', 'N/A')}")
-                st.markdown(f"**Extracted Skills:** {', '.join(jd.get('key_skills', ['N/A']))}")
-                st.markdown("---")
-                st.text(jd['content'])
-    elif st.session_state.candidate_jd_list and apply_filters_button:
-        st.info("No Job Descriptions match the selected criteria. Try broadening your filter selections.")
-    elif st.session_state.candidate_jd_list and not apply_filters_button:
-        st.info("Use the filters above and click **'Apply Filters'** to view matching Job Descriptions.")
+    # Clear Chat Button
+    if st.session_state.resume_chatbot_history:
+        st.markdown("---")
+        if st.button("🗑️ Clear Resume Chat History", key="clear_resume_chatbot_history"):
+            st.session_state.resume_chatbot_history = []
+            st.rerun()
 
+# 4. JD Q&A Content Tab (New Sub-tab)
+def jd_qa_content():
+    """Content for the JD Q&A sub-tab."""
+    st.subheader("💼 JD Q&A Chatbot")
+    st.markdown("Select a Job Description and ask questions about its requirements.")
 
-# ==============================================================================
-# 3. MAIN CANDIDATE DASHBOARD FUNCTION
-# ==============================================================================
+    if not st.session_state.get('candidate_jd_list'):
+        st.warning("⚠️ **Q&A Disabled:** Please load Job Descriptions in the 'JD Management' tab first.")
+        return
 
-def candidate_dashboard():
-    st.set_page_config(
-        page_title="Candidate AI Dashboard",
-        layout="wide",
-        initial_sidebar_state="expanded"
+    # Select JD
+    jd_names = [jd['name'] for jd in st.session_state.candidate_jd_list]
+    selected_jd_name = st.selectbox(
+        "Select Job Description",
+        options=jd_names,
+        key="selected_jd_for_qa"
     )
 
-    st.header("👩‍🎓 Candidate AI Dashboard")
-    st.markdown("Welcome! Use the tabs below to manage your CV and access AI preparation tools.")
+    if "jd_chatbot_history" not in st.session_state:
+        st.session_state.jd_chatbot_history = {} # History stored per JD name
 
-    # --- Session State Initialization (CRITICAL BLOCK) ---
-    if 'page' not in st.session_state: st.session_state.page = "login"
-    if 'parsed' not in st.session_state: st.session_state.parsed = {}
-    if 'full_text' not in st.session_state: st.session_state.full_text = ""
-    if 'excel_data' not in st.session_state: st.session_state.excel_data = None
-    if 'qa_answer_resume' not in st.session_state: st.session_state.qa_answer_resume = ""
-    if 'qa_answer_jd' not in st.session_state: st.session_state.qa_answer_jd = ""
-    if 'iq_output' not in st.session_state: st.session_state.iq_output = ""
-    if 'jd_fit_output' not in st.session_state: st.session_state.jd_fit_output = ""
-    if 'candidate_jd_list' not in st.session_state: st.session_state.candidate_jd_list = []
-    if 'candidate_match_results' not in st.session_state: st.session_state.candidate_match_results = []
-    if 'candidate_uploaded_resumes' not in st.session_state: st.session_state.candidate_uploaded_resumes = []
-    if 'pasted_cv_text' not in st.session_state: st.session_state.pasted_cv_text = "" 
-    if 'interview_qa' not in st.session_state: st.session_state.interview_qa = [] 
-    if 'evaluation_report' not in st.session_state: st.session_state.evaluation_report = ""
+    # Get the JD content
+    selected_jd = next((jd for jd in st.session_state.candidate_jd_list if jd['name'] == selected_jd_name), None)
+    jd_content = selected_jd['content'] if selected_jd else ""
+
+    # Initialize history for the selected JD
+    current_jd_history = st.session_state.jd_chatbot_history.setdefault(selected_jd_name, [])
+
+    st.info(f"Chatting about: **{selected_jd_name}** (Role: {selected_jd.get('role', 'N/A')})")
+    st.markdown("---")
+
+    # Display Chat History
+    for message in current_jd_history:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    # Chat Input and Logic
+    if prompt := st.chat_input(f"Ask about the requirements of: {selected_jd_name}...", key="jd_qa_input"):
+        # Add user message to history
+        current_jd_history.append({"role": "user", "content": prompt})
+        
+        # Display user message
+        with st.chat_message("user"):
+            st.markdown(prompt)
+        
+        # Get AI response
+        with st.spinner("Thinking..."):
+            ai_response = qa_on_jd(prompt, jd_content)
+
+        # Display AI response and add to history
+        with st.chat_message("assistant"):
+            st.markdown(ai_response)
+            
+        current_jd_history.append({"role": "assistant", "content": ai_response})
+        st.rerun()
+
+    # Clear Chat Button for the current JD
+    if current_jd_history:
+        st.markdown("---")
+        if st.button(f"🗑️ Clear Chat History for {selected_jd_name}", key="clear_jd_chatbot_history"):
+            st.session_state.jd_chatbot_history[selected_jd_name] = []
+            st.rerun()
+
+# 5. Main Chatbot Tab Wrapper
+def chatbot_tab_content():
+    """Main Content for the Chatbot Tab with sub-tabs."""
+    st.header("🤖 AI Chatbot Assistant")
     
-    # Initialize main cv_form_data structure
-    if "cv_form_data" not in st.session_state: 
+    # Sub-tabs for the main Chatbot tab
+    tab_resume, tab_jd = st.tabs(["👤 Resume Q&A", "💼 JD Q&A"])
+    
+    with tab_resume:
+        resume_qa_content()
+        
+    with tab_jd:
+        jd_qa_content()
+
+# --------------------------------------------------------------------------------------
+# END CHATBOT FUNCTIONALITY
+# --------------------------------------------------------------------------------------
+
+
+# -------------------------
+# CANDIDATE DASHBOARD FUNCTION 
+# -------------------------
+
+def candidate_dashboard():
+    st.title("🧑‍💻 Candidate Dashboard")
+    
+    col_header, col_logout = st.columns([4, 1])
+    with col_logout:
+        if st.button("🚪 Log Out", use_container_width=True):
+            for key in list(st.session_state.keys()):
+                if key not in ['page', 'logged_in', 'user_type']:
+                    del st.session_state[key]
+            go_to("login")
+            st.rerun() 
+            
+    st.markdown("---")
+
+    # --- Session State Initialization ---
+    if "parsed" not in st.session_state: st.session_state.parsed = {} 
+    if "full_text" not in st.session_state: st.session_state.full_text = ""
+    if "excel_data" not in st.session_state: st.session_state.excel_data = None
+    if "candidate_uploaded_resumes" not in st.session_state: st.session_state.candidate_uploaded_resumes = []
+    if "pasted_cv_text" not in st.session_state: st.session_state.pasted_cv_text = ""
+    if "current_parsing_source_name" not in st.session_state: st.session_state.current_parsing_source_name = None 
+    
+    if "candidate_jd_list" not in st.session_state: st.session_state.candidate_jd_list = []
+    if "candidate_match_results" not in st.session_state: st.session_state.candidate_match_results = []
+    if 'filtered_jds_display' not in st.session_state: st.session_state.filtered_jds_display = []
+    if 'last_selected_skills' not in st.session_state: st.session_state.last_selected_skills = []
+    
+    # CV Builder State Initialization (Crucial for the new tab)
+    if "cv_form_data" not in st.session_state:
         st.session_state.cv_form_data = {
             "name": "", "email": "", "phone": "", "linkedin": "", "github": "",
             "skills": [], "experience": [], "education": [], "certifications": [], 
             "projects": [], "strength": [], "personal_details": "",
-            "structured_experience": [], 
+            "structured_experience": [],
             "structured_certifications": [],
-            "structured_education": [] 
+            "structured_education": []
         }
     
-    # Initialize keys for the dynamic mini-forms (used inside mini-forms)
-    current_year = date.today().year
-    
-    # Education form keys
-    if "mini_edu_degree_key" not in st.session_state: st.session_state["mini_edu_degree_key"] = ""
-    if "mini_edu_college_key" not in st.session_state: st.session_state["mini_edu_college_key"] = ""
-    if "mini_edu_university_key" not in st.session_state: st.session_state["mini_edu_university_key"] = ""
-    if "mini_edu_from_year_key" not in st.session_state: st.session_state["mini_edu_from_year_key"] = str(current_year)
-    if "mini_edu_to_year_key" not in st.session_state: st.session_state["mini_edu_to_year_key"] = "Present"
-    if "mini_edu_score_key" not in st.session_state: st.session_state["mini_edu_score_key"] = ""
-    if "mini_edu_type_key" not in st.session_state: st.session_state["mini_edu_type_key"] = "CGPA"
-    
-    # Certification form keys
-    if "mini_cert_title_key" not in st.session_state: st.session_state["mini_cert_title_key"] = ""
-    if "mini_cert_given_by_key" not in st.session_state: st.session_state["mini_cert_given_by_key"] = ""
-    if "mini_cert_issue_date_key" not in st.session_state: st.session_state["mini_cert_issue_date_key"] = str(date.today().year)
-    
-    # Experience form keys
-    if "mini_exp_company_key" not in st.session_state: st.session_state["mini_exp_company_key"] = ""
-    if "mini_exp_role_key" not in st.session_state: st.session_state["mini_exp_role_key"] = ""
-    if "mini_exp_from_year_key" not in st.session_state: st.session_state["mini_exp_from_year_key"] = str(current_year)
-    if "mini_exp_to_year_key" not in st.session_state: st.session_state["mini_exp_to_year_key"] = "Present"
-    if "mini_exp_ctc_key" not in st.session_state: st.session_state["mini_exp_ctc_key"] = ""
-    if "mini_exp_responsibilities_key" not in st.session_state: st.session_state["mini_exp_responsibilities_key"] = ""
+    # Chatbot history initialized separately for each sub-tab
+    if "resume_chatbot_history" not in st.session_state: st.session_state.resume_chatbot_history = []
+    if "jd_chatbot_history" not in st.session_state: st.session_state.jd_chatbot_history = {} # Keyed by JD name
 
-    # Filter state
-    if "candidate_filter_skills_multiselect" not in st.session_state:
-        st.session_state.candidate_filter_skills_multiselect = []
-    if "filtered_jds_display" not in st.session_state:
-        st.session_state.filtered_jds_display = []
-    if "last_selected_skills" not in st.session_state:
-        st.session_state.last_selected_skills = []
-        
-    # --- END Session State Initialization ---
-
-    # --- NAVIGATION BLOCK (Sidebar) ---
-    with st.sidebar:
-        st.header("Resume/CV Status")
-        
-        if st.session_state.parsed.get("name") and st.session_state.parsed.get('name') != "":
-            st.success(f"Currently loaded: **{st.session_state.parsed['name']}**")
-        elif st.session_state.full_text:
-            st.warning("Resume content is loaded (raw text).")
-        else:
-            st.info("Please upload a file or use the CV builder.")
-            
-        st.markdown("---")
-        if st.button("🚪 Log Out", key="candidate_logout_btn", use_container_width=True, type="secondary"): 
-            go_to("login") 
-    # --- END NAVIGATION BLOCK ---
+    # --- Main Content with Tabs (NEW TAB ADDED) ---
+    tab_parsing, tab_cv_management, tab_data_view, tab_jd, tab_batch_match, tab_filter_jd, tab_chatbot = st.tabs(
+        ["📄 Resume Parsing", "📝 CV Management", "✨ Parsed Data View", "📚 JD Management", "🎯 Batch JD Match", "🔍 Filter JD", "🤖 Chatbot"]
+    )
     
-    # Main Content Tabs
-    tab_cv_mgmt, tab_parsing, tab_jd_mgmt, tab_batch_match, tab_filter_jd, tab_chatbot, tab_interview_prep = st.tabs([
-        "✍️ CV Management",          
-        "📄 Resume Parsing",         
-        "📚 JD Management",          
-        "🎯 Batch JD Match",         
-        "🔍 Filter JD",              
-        "💬 Resume/JD Chatbot (Q&A)",
-        "❓ Interview Prep"           
-    ])
-    
-    is_resume_parsed = bool(st.session_state.get('parsed', {}).get('name')) and st.session_state.parsed.get('name') != ""
-    
-    # --- TAB 0: CV Management ---
-    with tab_cv_mgmt:
-        cv_management_tab_content()
-
-    # --- TAB 1: Resume Parsing ---
     with tab_parsing:
-        st.header("Resume Upload and Parsing")
+        resume_parsing_tab()
         
-        input_method = st.radio(
-            "Select Input Method",
-            ["Upload File", "Paste Text"],
-            key="parsing_input_method"
-        )
+    with tab_cv_management:
+        cv_management_tab_content() # NEW TAB
         
-        st.markdown("---")
-
-        if input_method == "Upload File":
-            st.markdown("### 1. Upload Resume File") 
-            
-            uploaded_file = st.file_uploader( 
-                "Choose PDF, DOCX, TXT, JSON, MD, CSV, XLSX file", 
-                type=["pdf", "docx", "txt", "json", "md", "csv", "xlsx", "markdown", "rtf"], 
-                accept_multiple_files=False, 
-                key='candidate_file_upload_main'
-            )
-            
-            st.markdown(
-                """
-                <div style='font-size: 10px; color: grey;'>
-                Supported File Types: PDF, DOCX, TXT, JSON, MARKDOWN, CSV, XLSX, RTF
-                </div>
-                """, 
-                unsafe_allow_html=True
-            )
-            st.markdown("---")
-
-            if uploaded_file is not None:
-                if not st.session_state.candidate_uploaded_resumes or st.session_state.candidate_uploaded_resumes[0].name != uploaded_file.name:
-                    st.session_state.candidate_uploaded_resumes = [uploaded_file] 
-                    st.session_state.pasted_cv_text = ""
-                    st.toast("Resume file uploaded successfully.")
-            elif st.session_state.candidate_uploaded_resumes and uploaded_file is None:
-                st.session_state.candidate_uploaded_resumes = []
-                st.session_state.parsed = {}
-                st.session_state.full_text = ""
-                st.toast("Upload cleared.")
-            
-            file_to_parse = st.session_state.candidate_uploaded_resumes[0] if st.session_state.candidate_uploaded_resumes else None
-            
-            st.markdown("### 2. Parse Uploaded File")
-            
-            if file_to_parse:
-                if st.button(f"Parse and Load: **{file_to_parse.name}**", key="parse_file_btn", use_container_width=True): 
-                    with st.spinner(f"Parsing {file_to_parse.name}..."):
-                        result = parse_and_store_resume(file_to_parse, file_name_key='single_resume_candidate', source_type='file')
-                        
-                        if "error" not in result:
-                            st.session_state.parsed = result['parsed']
-                            st.session_state.full_text = result['full_text']
-                            st.session_state.excel_data = result['excel_data'] 
-                            st.session_state.parsed['name'] = result['name'] 
-                            st.session_state.cv_form_data = st.session_state.parsed.copy() 
-                            clear_interview_state()
-                            st.success(f"✅ Successfully loaded and parsed **{result['name']}**.")
-                            st.info("View, edit, and download the parsed data in the **CV Management** tab.") 
-                        else:
-                            st.error(f"Parsing failed for {file_to_parse.name}: {result['error']}")
-                            st.session_state.parsed = {"error": result['error'], "name": result['name']}
-                            st.session_state.full_text = result['full_text'] or ""
-            else:
-                st.info("No resume file is currently uploaded. Please upload a file above.")
-
-        else: # input_method == "Paste Text"
-            st.markdown("### 1. Paste Your CV Text")
-            
-            pasted_text = st.text_area(
-                "Copy and paste your entire CV or resume text here.",
-                value=st.session_state.get('pasted_cv_text', ''),
-                height=300,
-                key='pasted_cv_text_input'
-            )
-            st.session_state.pasted_cv_text = pasted_text
-            
-            st.markdown("---")
-            st.markdown("### 2. Parse Pasted Text")
-            
-            if pasted_text.strip():
-                if st.button("Parse and Load Pasted Text", key="parse_text_btn", use_container_width=True): 
-                    with st.spinner("Parsing pasted text..."):
-                        st.session_state.candidate_uploaded_resumes = []
-                        
-                        result = parse_and_store_resume(pasted_text, file_name_key='single_resume_candidate', source_type='text')
-                        
-                        if "error" not in result:
-                            st.session_state.parsed = result['parsed']
-                            st.session_state.full_text = result['full_text']
-                            st.session_state.excel_data = result['excel_data'] 
-                            st.session_state.parsed['name'] = result['name'] 
-                            st.session_state.cv_form_data = st.session_state.parsed.copy() 
-                            clear_interview_state()
-                            st.success(f"✅ Successfully loaded and parsed **{result['name']}**.")
-                            st.info("View, edit, and download the parsed data in the **CV Management** tab.") 
-                        else:
-                            st.error(f"Parsing failed: {result['error']}")
-                            st.session_state.parsed = {"error": result['error'], "name": result['name']}
-                            st.session_state.full_text = result['full_text'] or ""
-            else:
-                st.info("Please paste your CV text into the box above.")
-
-    # --- TAB 2: JD Management ---
-    with tab_jd_mgmt:
-        st.header("📚 Manage Job Descriptions for Matching")
-        st.markdown("Add multiple JDs here to compare your resume against them in the next tabs.")
+    with tab_data_view:
+        parsed_data_tab()
         
-        jd_type = st.radio("Select JD Type", ["Single JD", "Multiple JD"], key="jd_type_candidate")
-        st.markdown("### Add JD by:")
+    with tab_jd:
+        jd_management_tab_candidate()
         
-        method = st.radio("Choose Method", ["Upload File", "Paste Text", "LinkedIn URL"], key="jd_add_method_candidate") 
-
-        # URL
-        if method == "LinkedIn URL":
-            url_list = st.text_area(
-                "Enter one or more URLs (comma separated)" if jd_type == "Multiple JD" else "Enter URL", key="url_list_candidate"
-            )
-            if st.button("Add JD(s) from URL", key="add_jd_url_btn_candidate"):
-                if url_list:
-                    urls = [u.strip() for u in url_list.split(",")] if jd_type == "Multiple JD" else [url_list.strip()]
-                    
-                    count = 0
-                    for url in urls:
-                        if not url: continue
-                        
-                        with st.spinner(f"Attempting JD extraction and metadata analysis for: {url}"):
-                            jd_text = extract_jd_from_linkedin_url(url)
-                            metadata = extract_jd_metadata(jd_text)
-                        
-                        name_base = url.split('/jobs/view/')[-1].split('/')[0] if '/jobs/view/' in url else f"URL {count+1}"
-                        name = f"JD from URL: {name_base}" 
-                        if name in [item['name'] for item in st.session_state.candidate_jd_list]:
-                            name = f"JD from URL: {name_base} ({len(st.session_state.candidate_jd_list) + 1})" 
-
-                        st.session_state.candidate_jd_list.append({"name": name, "content": jd_text, **metadata})
-                        
-                        if not jd_text.startswith("[Error"):
-                            count += 1
-                                
-                    if count > 0:
-                        st.success(f"✅ {count} JD(s) added successfully! Check the display below for the extracted content.")
-                    else:
-                        st.error("No JDs were added successfully.")
-
-
-        # Paste Text
-        elif method == "Paste Text":
-            text_list = st.text_area(
-                "Paste one or more JD texts (separate by '---')" if jd_type == "Multiple JD" else "Paste JD text here", key="text_list_candidate"
-            )
-            if st.button("Add JD(s) from Text", key="add_jd_text_btn_candidate"):
-                if text_list:
-                    texts = [t.strip() for t in text_list.split("---")] if jd_type == "Multiple JD" else [text_list.strip()]
-                    for i, text in enumerate(texts):
-                         if text:
-                            name_base = text.splitlines()[0].strip()
-                            if len(name_base) > 30: name_base = f"{name_base[:27]}..."
-                            if not name_base: name_base = f"Pasted JD {len(st.session_state.candidate_jd_list) + i + 1}"
-                            
-                            metadata = extract_jd_metadata(text)
-                            st.session_state.candidate_jd_list.append({"name": name_base, "content": text, **metadata})
-                    st.success(f"✅ {len(texts)} JD(s) added successfully!")
-
-        # Upload File
-        elif method == "Upload File":
-            uploaded_files = st.file_uploader(
-                "Upload JD file(s)",
-                type=["pdf", "txt", "docx"],
-                accept_multiple_files=(jd_type == "Multiple JD"), 
-                key="jd_file_uploader_candidate"
-            )
-            if st.button("Add JD(s) from File", key="add_jd_file_btn_candidate"):
-                files_to_process = uploaded_files if isinstance(uploaded_files, list) else ([uploaded_files] if uploaded_files else [])
-                if files_to_process:
-                    st.session_state.candidate_jd_list.append({"name": files_to_process[0].name, "content": "Simulated JD Text", "role": "Simulated Role", "job_type": "Full-time", "key_skills": ["Stub"]})
-                    st.success(f"Simulated addition of {len(files_to_process)} JD(s).")
-                else:
-                    st.warning("Please upload file(s).")
-
-
-        # Display Added JDs
-        if st.session_state.candidate_jd_list:
-            
-            col_display_header, col_clear_button = st.columns([3, 1])
-            
-            with col_display_header:
-                st.markdown("### ✅ Current JDs Added:")
-                
-            with col_clear_button:
-                if st.button("🗑️ Clear All JDs", key="clear_jds_candidate", use_container_width=True, help="Removes all currently loaded JDs.", type="secondary"): 
-                    st.session_state.candidate_jd_list = []
-                    st.session_state.candidate_match_results = [] 
-                    st.session_state.filtered_jds_display = [] 
-                    st.success("All JDs and associated match results have been cleared.")
-                    st.rerun() 
-
-            for idx, jd_item in enumerate(st.session_state.candidate_jd_list, 1):
-                title = jd_item['name']
-                display_title = title.replace("--- Simulated JD for: ", "")
-                with st.expander(f"JD {idx}: {display_title} | Role: {jd_item.get('role', 'N/A')}"):
-                    st.markdown(f"**Job Type:** {jd_item.get('job_type', 'N/A')} | **Key Skills:** {', '.join(jd_item.get('key_skills', ['N/A']))}")
-                    st.markdown("---")
-                    st.text(jd_item['content'])
-        else:
-            st.info("No Job Descriptions added yet.")
-
-    # --- TAB 4: Batch JD Match ---
     with tab_batch_match:
-        st.header("🎯 Batch JD Match: Best Matches")
-        st.markdown("Compare your current resume against all saved job descriptions.")
-
-        if not is_resume_parsed:
-            st.warning("Please upload and parse your resume in the 'Resume Parsing' tab or build your CV in the 'CV Management' tab first.")
+        jd_batch_match_tab()
         
-        elif not st.session_state.candidate_jd_list:
-            st.error("Please add Job Descriptions in the 'JD Management' tab before running batch analysis.")
-            
-        else: 
-            if "candidate_match_results" not in st.session_state:
-                st.session_state.candidate_match_results = []
-
-            all_jd_names = [item['name'] for item in st.session_state.candidate_jd_list]
-            
-            selected_jd_names = st.multiselect(
-                "Select Job Descriptions to Match Against",
-                options=all_jd_names,
-                default=all_jd_names, 
-                key='candidate_batch_jd_select'
-            )
-            
-            jds_to_match = [
-                jd_item for jd_item in st.session_state.candidate_jd_list 
-                if jd_item['name'] in selected_jd_names
-            ]
-            
-            if st.button(f"Run Match Analysis on {len(jds_to_match)} Selected JD(s)", key='run_match_analysis_btn', type="primary"): 
-                st.session_state.candidate_match_results = []
-                
-                if not jds_to_match:
-                    st.warning("Please select at least one Job Description to run the analysis.")
-                    
-                else:
-                    results_with_score = []
-                    
-                    with st.spinner(f"Matching resume against {len(jds_to_match)} selected JD(s)..."):
-                        
-                        for jd_item in jds_to_match:
-                            jd_name = jd_item['name']
-                            jd_content = jd_item['content']
-
-                            try:
-                                fit_output = evaluate_jd_fit(jd_content, st.session_state.parsed)
-                                
-                                scores = extract_score(fit_output)
-                                overall_score = scores['overall']
-                                
-                                results_with_score.append({
-                                    "jd_name": jd_name,
-                                    "overall_score": overall_score,
-                                    "numeric_score": int(overall_score) if overall_score.isdigit() else -1,
-                                    "skills_percent": scores['skills'],
-                                    "experience_percent": scores['experience'], 
-                                    "education_percent": '90' if overall_score.isdigit() else 'N/A',   
-                                    "full_analysis": fit_output
-                                })
-                            except Exception as e:
-                                results_with_score.append({"jd_name": jd_name, "overall_score": "Error", "numeric_score": -1, "skills_percent": "Error", "experience_percent": "Error", "education_percent": "Error", "full_analysis": f"Error: {e}"})
-                                
-                        # Ranking Logic
-                        results_with_score.sort(key=lambda x: x['numeric_score'], reverse=True)
-                        current_rank = 1
-                        current_score = -1 
-                        
-                        for i, item in enumerate(results_with_score):
-                            if item['numeric_score'] > current_score:
-                                current_rank = i + 1
-                                current_score = item['numeric_score']
-                            
-                            item['rank'] = current_rank
-                            del item['numeric_score'] 
-                            
-                        st.session_state.candidate_match_results = results_with_score
-                        st.success("Batch analysis complete!")
-
-
-            if st.session_state.get('candidate_match_results'):
-                st.markdown("#### Match Results for Your Resume")
-                results_df = st.session_state.candidate_match_results
-                
-                display_data = []
-                for item in results_df:
-                    full_jd_item = next((jd for jd in st.session_state.candidate_jd_list if jd['name'] == item['jd_name']), {})
-                    
-                    display_data.append({
-                        "Rank": item.get("rank", "N/A"),
-                        "Job Description (Ranked)": item["jd_name"].replace("--- Simulated JD for: ", ""),
-                        "Role": full_jd_item.get('role', 'N/A'),
-                        "Job Type": full_jd_item.get('job_type', 'N/A'),
-                        "Fit Score (out of 10)": item["overall_score"],
-                        "Skills (%)": item.get("skills_percent", "N/A"),
-                        "Experience (%)": item.get("experience_percent", "N/A"), 
-                        "Education (%)": item.get("education_percent", "N/A"),   
-                    })
-
-                st.dataframe(display_data, use_container_width=True)
-
-                st.markdown("##### Detailed Reports")
-                for item in results_df:
-                    rank_display = f"Rank {item.get('rank', 'N/A')} | "
-                    header_text = f"{rank_display}Report for **{item['jd_name'].replace('--- Simulated JD for: ', '')}** (Score: **{item['overall_score']}/10** | S: **{item.get('skills_percent', 'N/A')}%** | E: **{item.get('experience_percent', 'N/A')}%** | Edu: **{item.get('education_percent', 'N/A')}%**)"
-                    with st.expander(header_text):
-                        st.markdown(item['full_analysis'])
-
-    # --- TAB 5: Filter JD ---
     with tab_filter_jd:
         filter_jd_tab_content()
-
-    # --- TAB 6: Resume/JD Chatbot (Q&A) ---
+        
     with tab_chatbot:
-        st.header("Resume/JD Chatbot (Q&A) 💬")
+        chatbot_tab_content()
+
+
+# -------------------------
+# MOCK LOGIN AND MAIN APP LOGIC 
+# -------------------------
+
+def login_page():
+    st.set_page_config(layout="wide", page_title="PragyanAI Candidate Dashboard")
+    st.title("Welcome to PragyanAI")
+    st.header("Login")
+    
+    with st.form("login_form"):
+        username = st.text_input("Username (Enter 'candidate')")
+        password = st.text_input("Password (Any value)", type="password")
+        submitted = st.form_submit_button("Login")
         
-        sub_tab_resume, sub_tab_jd = st.tabs([
-            "👤 Chat about Your Resume",
-            "📄 Chat about Saved JDs"
-        ])
-        
-        # --- RESUME CHATBOT CONTENT ---
-        with sub_tab_resume:
-            st.markdown("### Ask any question about the currently loaded resume.")
-            if not is_resume_parsed:
-                st.warning("Please upload and parse a resume in the 'Resume Parsing' tab or use the 'CV Management' tab first.")
-            else: 
-                
-                if 'qa_answer_resume' not in st.session_state: st.session_state.qa_answer_resume = ""
-                
-                question = st.text_input(
-                    "Your Question (about Resume)", 
-                    placeholder="e.g., What are the candidate's key skills?",
-                    key="resume_qa_question"
-                )
-                
-                if st.button("Get Answer (Resume)", key="qa_btn_resume"):
-                    with st.spinner("Generating answer..."):
-                        try:
-                            answer = qa_on_resume(question) 
-                            st.session_state.qa_answer_resume = answer
-                        except Exception as e:
-                            st.error(f"Error during Resume Q&A: {e}")
-                            st.session_state.qa_answer_resume = "Could not generate an answer."
+        if submitted:
+            if username.lower() == "candidate":
+                st.session_state.logged_in = True
+                st.session_state.user_type = "candidate"
+                go_to("candidate_dashboard")
+                st.rerun()
+            else:
+                st.error("Invalid username. Please use 'candidate'.")
 
-                if st.session_state.get('qa_answer_resume'):
-                    st.text_area("Answer (Resume)", st.session_state.qa_answer_resume, height=150, key='resume_qa_answer_display')
-        
-        # --- JD CHATBOT CONTENT ---
-        with sub_tab_jd:
-            st.markdown("### Ask any question about a saved Job Description.")
-            
-            if not st.session_state.candidate_jd_list:
-                st.warning("Please add Job Descriptions in the 'JD Management' tab first.")
-            else: 
-                if 'qa_answer_jd' not in st.session_state: st.session_state.qa_answer_jd = ""
-
-                jd_names = [jd['name'] for jd in st.session_state.candidate_jd_list]
-                selected_jd_name = st.selectbox(
-                    "Select Job Description to Query",
-                    options=jd_names,
-                    key="jd_qa_select"
-                )
-                
-                question = st.text_input(
-                    "Your Question (about JD)", 
-                    placeholder="e.g., What is the minimum experience required for this role?",
-                    key="jd_qa_question"
-                )
-                
-                if st.button("Get Answer (JD)", key="qa_btn_jd"):
-                    if selected_jd_name and question.strip():
-                        with st.spinner(f"Generating answer for {selected_jd_name}..."):
-                            try:
-                                answer = qa_on_jd(question, selected_jd_name) 
-                                st.session_state.qa_answer_jd = answer
-                            except Exception as e:
-                                st.error(f"Error during JD Q&A: {e}")
-                                st.session_state.qa_answer_jd = "Could not generate an answer."
-                    else:
-                        st.error("Please select a JD and enter a question.")
-
-                if st.session_state.get('qa_answer_jd'):
-                    st.text_area("Answer (JD)", st.session_state.qa_answer_jd, height=150, key='jd_qa_answer_display')
-
-
-    # --- TAB 7: Interview Prep ---
-    with tab_interview_prep:
-        st.header("Interview Preparation Tools")
-        if not is_resume_parsed or "error" in st.session_state.parsed:
-            st.warning("Please upload and successfully parse a resume first.")
-        else: 
-            
-            if 'iq_output' not in st.session_state: st.session_state.iq_output = ""
-            if 'interview_qa' not in st.session_state: st.session_state.interview_qa = [] 
-            if 'evaluation_report' not in st.session_state: st.session_state.evaluation_report = "" 
-            
-            st.subheader("1. Generate Interview Questions")
-            
-            section_choice = st.selectbox(
-                "Select Section", 
-                question_section_options, 
-                key='iq_section_c',
-                on_change=clear_interview_state 
-            )
-            
-            if st.button("Generate Interview Questions", key='iq_btn_c'):
-                with st.spinner("Generating questions..."):
-                    try:
-                        raw_questions_response = generate_interview_questions(st.session_state.parsed, section_choice) 
-                        st.session_state.iq_output = raw_questions_response
-                        
-                        st.session_state.interview_qa = [] 
-                        st.session_state.evaluation_report = "" 
-                        
-                        # Parsing logic for generated questions (assuming the LLM format is followed)
-                        q_list = []
-                        current_level = "Generic"
-                        for line in raw_questions_response.splitlines():
-                            line = line.strip()
-                            if line.startswith('[') and line.endswith(']'):
-                                current_level = line.strip('[]')
-                            elif line.lower().startswith('q') and ':' in line:
-                                question_text = line[line.find(':') + 1:].strip()
-                                q_list.append({"question": f"({current_level}) {question_text}", "answer": "", "level": current_level})
-                                
-                        st.session_state.interview_qa = q_list
-                        st.success(f"Generated {len(q_list)} questions based on your **{section_choice}** section.")
-                        
-                    except Exception as e:
-                        st.error(f"Error generating questions: {e}")
-                        st.session_state.iq_output = "Error generating questions."
-                        st.session_state.interview_qa = []
-
-            if st.session_state.get('interview_qa'):
-                st.markdown("---")
-                st.subheader("2. Practice and Record Answers")
-                
-                with st.form("interview_practice_form"):
-                    
-                    for i, qa_item in enumerate(st.session_state.interview_qa):
-                        st.markdown(f"**Question {i+1}:** {qa_item['question']}")
-                        
-                        answer = st.text_area(
-                            f"Your Answer for Q{i+1}", 
-                            value=st.session_state.interview_qa[i]['answer'], 
-                            height=100,
-                            key=f'answer_q_{i}',
-                            label_visibility='collapsed'
-                        )
-                        st.session_state.interview_qa[i]['answer'] = answer 
-                        st.markdown("---") 
-                        
-                    submit_button = st.form_submit_button("Submit & Evaluate Answers", use_container_width=True, type="secondary")
-
-                    if submit_button:
-                        if all(item['answer'].strip() for item in st.session_state.interview_qa):
-                            with st.spinner("Sending answers to AI Evaluator..."):
-                                try:
-                                    report = evaluate_interview_answers(
-                                        st.session_state.interview_qa,
-                                        st.session_state.parsed
-                                    ) 
-                                    st.session_state.evaluation_report = report
-                                    st.success("Evaluation complete! See the report below.")
-                                except Exception as e:
-                                    st.error(f"Evaluation failed: {e}")
-                                    st.session_state.evaluation_report = f"Evaluation failed: {e}\n{traceback.format_exc()}"
-                        else:
-                            st.error("Please answer all generated questions before submitting.")
-                
-                if st.session_state.get('evaluation_report'):
-                    st.markdown("---")
-                    st.subheader("3. AI Evaluation Report")
-                    st.markdown(st.session_state.evaluation_report)
-
-# ==============================================================================
-# 4. MAIN EXECUTION BLOCK (CRITICAL FOR STREAMLIT)
-# ==============================================================================
+# --- Main App Execution ---
 
 if __name__ == '__main__':
-    if 'page' not in st.session_state:
-        st.session_state.page = "dashboard"
+    st.set_page_config(layout="wide", page_title="PragyanAI Candidate Dashboard")
+
+    if 'page' not in st.session_state: st.session_state.page = "login"
+    if 'logged_in' not in st.session_state: st.session_state.logged_in = False
+    if 'user_type' not in st.session_state: st.session_state.user_type = None
     
-    # In this structure, synchronization between temporary keys and form widgets is 
-    # handled automatically by Streamlit when the mini-forms are submitted, 
-    # as the mini-forms successfully cause a rerun when submitted.
-    
-    if st.session_state.page == "dashboard":
+    if st.session_state.logged_in and st.session_state.user_type == "candidate":
         candidate_dashboard()
     else:
-        st.title("Welcome to the Candidate Dashboard")
-        if st.button("Start Dashboard"):
-            st.session_state.page = "dashboard"
-            st.rerun()
+        login_page()
