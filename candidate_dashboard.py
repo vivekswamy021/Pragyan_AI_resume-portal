@@ -31,7 +31,6 @@ STARTER_KEYWORDS = {
 
 class MockGroqClient:
     """Mock client for local testing when Groq is not available or key is missing."""
-    # The structure must mimic the actual Groq client for client = Groq(...) to work.
     def chat(self):
         class Completions:
             def create(self, **kwargs):
@@ -39,7 +38,7 @@ class MockGroqClient:
                 
                 # --- Specific Mock Logic for Interview Prep (ADAPTED FOR NEW FLOW) ---
                 if "Generate a list of interview questions" in prompt_content:
-                    section_match = re.search(r'targeting the ([\w\s]+) section', prompt_content)
+                    section_match = re.search(r'targeting the \*\*(.+?)\*\* section', prompt_content)
                     section = section_match.group(1).strip() if section_match else "General"
                     
                     mock_questions_raw = f"""
@@ -239,11 +238,9 @@ except (ImportError, ValueError, NameError) as e:
 
 def clear_interview_state():
     """Clears all session state variables related to interview preparation."""
-    # Retain the Q&A history states, only clear match-specific states
     if 'iq_output' in st.session_state: del st.session_state['iq_output']
     if 'interview_qa' in st.session_state: del st.session_state['interview_qa']
     if 'evaluation_report' in st.session_state: del st.session_state['evaluation_report']
-    # Clear other match states for good measure
     if 'candidate_match_results' in st.session_state: st.session_state.candidate_match_results = []
     if 'generated_cover_letter' in st.session_state: del st.session_state['generated_cover_letter'] 
 
@@ -452,7 +449,8 @@ def parse_and_store_resume(content_source, file_name_key, source_type):
         if v and k not in ['error']:
             compiled_text += f"## {k.replace('_', ' ').title()}\n\n"
             if isinstance(v, list):
-                compiled_text += "\n".join([f"* {item}" for item in v]) + "\n\n"
+                # Ensure all list items are strings for clean display
+                compiled_text += "\n".join([f"* {str(item)}" for item in v]) + "\n\n"
             else:
                 compiled_text += str(v) + "\n\n"
 
@@ -572,6 +570,7 @@ def extract_jd_metadata(jd_text):
     role_match = re.search(r'(?:Role|Position|Title|Engineer|Scientist)[:\s\n]+([\w\s/-]+)', jd_text, re.IGNORECASE)
     role = role_match.group(1).strip() if role_match else "Software Engineer (Mock)"
     
+    # Simple regex to extract common keywords
     skills_match = re.findall(r'(Python|Java|SQL|AWS|Docker|Kubernetes|React|Streamlit|Cloud|Data|ML|LLM|MLOps|Visualization|Deep Learning|TensorFlow|Pytorch)', jd_text, re.IGNORECASE)
     
     if 'data scientist' in jd_text.lower() or 'machine learning' in jd_text.lower():
@@ -668,8 +667,9 @@ def generate_cover_letter_llm(jd_content, parsed_json, preferred_style="Standard
 
     candidate_name = parsed_json.get('name', 'The Candidate')
     candidate_email = parsed_json.get('email', '[Candidate Email]')
-    candidate_skills = ", ".join(parsed_json.get('skills', []))
-    candidate_experience = "\n".join(parsed_json.get('experience', []))
+    # Ensure list items are strings before joining
+    candidate_skills = ", ".join([str(s) for s in parsed_json.get('skills', [])])
+    candidate_experience = "\n".join([str(e) for e in parsed_json.get('experience', [])])
     
     jd_metadata = extract_jd_metadata(jd_content)
     jd_role = jd_metadata.get('role', 'the position')
@@ -683,7 +683,7 @@ def generate_cover_letter_llm(jd_content, parsed_json, preferred_style="Standard
     2.  **Structure:** Use standard cover letter format.
     3.  **Customization:** Directly reference the skills and experience listed in the candidate's resume that match the job description's requirements.
     4.  **Length:** Keep it brief, no more than four paragraphs.
-    5.  **Output Format:** Output the letter text only, using double newlines for paragraph breaks. Include placeholders like [Date], [Hiring Manager Name/Title, if known], and [Company Name] where necessary. Use bold formatting for the job title.
+    5.  **Output Format:** Output the letter text only, using double newlines for paragraph separation. Include placeholders like [Date], [Hiring Manager Name/Title, if known], and [Company Name] where necessary. Use bold formatting for the job title.
     
     --- Candidate Information ---
     Candidate Name: {candidate_name}
@@ -722,13 +722,17 @@ def generate_interview_questions(parsed_json, target_section_display):
     global client, GROQ_MODEL
     
     target_section_key = target_section_display.lower().replace(' ', '_')
-    resume_content_str = parsed_json.get(target_section_key, "Content not found in this section.")
+    resume_content = parsed_json.get(target_section_key, "Content not found in this section.")
     
-    if isinstance(resume_content_str, list):
-        resume_content_str = "\n".join(resume_content_str)
+    # FIX: Ensure resume_content is a string before using it in the prompt/logic
+    if isinstance(resume_content, list):
+        resume_content_str = "\n".join([str(item) for item in resume_content])
+    else:
+        # Convert any other type (e.g., dictionary from complex parsing) to string
+        resume_content_str = str(resume_content)
         
-    if "Content not found" in resume_content_str:
-        return f"Error: Content for section '{target_section_display}' is empty in the parsed resume."
+    if "Content not found" in resume_content_str or not resume_content_str.strip():
+        return f"Error: Content for section '{target_section_display}' is empty or invalid in the parsed resume."
 
     prompt = f"""
     You are an expert technical interviewer. Based ONLY on the following candidate resume information, 
@@ -777,8 +781,11 @@ def evaluate_interview_answers(qa_list, parsed_json):
     # Format Q&A for LLM
     qa_exchange = "\n\n--- Candidate Answers ---\n\n"
     for i, item in enumerate(qa_list):
-        qa_exchange += f"Q{i+1} ({item['level']}): {item['question'].replace(f'({item['level']})', '').strip()}\n"
-        qa_exchange += f"Answer {i+1}: {item['answer']}\n"
+        # Ensure question and answer are strings
+        question = str(item['question'].replace(f"({item['level']})", '').strip())
+        answer = str(item['answer'])
+        qa_exchange += f"Q{i+1} ({item['level']}): {question}\n"
+        qa_exchange += f"Answer {i+1}: {answer}\n"
         qa_exchange += "---"
 
     # Get the full text of the resume for context
@@ -1654,10 +1661,11 @@ def interview_preparation_tab():
     # Generate section options dynamically
     parsed_keys = st.session_state.parsed.keys()
     question_section_options = [k.replace('_', ' ').title() for k in parsed_keys if k not in ['name', 'email', 'phone', 'error', 'linkedin', 'github', 'personal_details']]
-    question_section_options = sorted([o for o in question_section_options if o and st.session_state.parsed.get(o.lower().replace(' ', '_'))]) # Only sections with content
+    # Only sections with valid content that is not an empty string or empty list/dict
+    question_section_options = sorted([o for o in question_section_options if o and st.session_state.parsed.get(o.lower().replace(' ', '_')) and str(st.session_state.parsed.get(o.lower().replace(' ', '_'))).strip()])
 
     if not question_section_options:
-        st.error("No relevant sections (Experience, Skills, Projects) found in the parsed resume for question generation.")
+        st.error("No relevant sections (Experience, Skills, Projects) found in the parsed resume for question generation. Check your parsed data view.")
         return
         
     st.subheader("1. Generate Interview Questions")
@@ -1708,7 +1716,8 @@ def interview_preparation_tab():
                     st.warning(f"Could not parse any questions from the LLM response. Raw output:\n{raw_questions_response}")
                 
             except Exception as e:
-                st.error(f"Error generating questions: {e}")
+                # This block should now only catch non-type errors
+                st.error(f"Error generating questions: {e}\nTrace: {traceback.format_exc()}")
                 st.session_state.iq_output = "Error generating questions."
                 st.session_state.interview_qa = []
 
