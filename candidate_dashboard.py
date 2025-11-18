@@ -71,17 +71,17 @@ class MockGroqClient:
                     "phone": "555-1234", 
                     "linkedin": "https://linkedin.com/in/vivek-swamy-mock", 
                     "github": "https://github.com/vivek-mock", 
-                    "personal_details": "Mock summary generated for: Vivek Swamy. Based in Bengaluru.", 
+                    "personal_details": "Mock summary generated for: Vivek Swamy.", 
                     "skills": [
                         "Python", "SQL", "AWS", "Streamlit", 
                         "LLM Integration", "MLOps", "Data Visualization", 
                         "Docker", "Kubernetes", "Java", "API Services" 
                     ], 
                     "education": ["B.S. Computer Science, Mock University, 2020"], 
-                    "experience": ["Software Intern, Mock Solutions (2024-2025): Developed internal tools.", "Data Analyst, Test Corp (2022-2024): Led data cleaning projects."], 
+                    "experience": ["Software Intern, Mock Solutions (2024-2025)", "Data Analyst, Test Corp (2022-2024)"], 
                     "certifications": ["Mock Certification in AWS Cloud"], 
                     "projects": ["Mock Project: Built an MLOps pipeline using Docker and Kubernetes."], 
-                    "strength": ["Mock Strength: Problem Solving", "Excellent communication skills"], 
+                    "strength": ["Mock Strength"], 
                 }
                 
                 # Mock response content for GroqClient initialization check
@@ -359,6 +359,7 @@ def parse_resume_with_llm(text):
 
 
 # --- NEW HELPER FUNCTION FOR HTML/PDF Generation ---
+
 def generate_cv_html(parsed_data):
     """Generates a simple, print-friendly HTML string from parsed data for PDF conversion."""
     
@@ -391,17 +392,21 @@ def generate_cv_html(parsed_data):
     if parsed_data.get('email'): contact_parts.append(f"<span>📧 {parsed_data['email']}</span>")
     if parsed_data.get('phone'): contact_parts.append(f"<span>📱 {parsed_data['phone']}</span>")
     
-    # Clean links for display
-    linkedin_display = parsed_data.get('linkedin', '').replace('https://', '').replace('http://', '')
-    github_display = parsed_data.get('github', '').replace('https://', '').replace('http://', '')
-    
-    if parsed_data.get('linkedin'): contact_parts.append(f"<span>🔗 <a href='{parsed_data['linkedin']}'>{linkedin_display.split('/')[-1] if linkedin_display else 'LinkedIn'}</a></span>")
-    if parsed_data.get('github'): contact_parts.append(f"<span>💻 <a href='{parsed_data['github']}'>{github_display.split('/')[-1] if github_display else 'GitHub'}</a></span>")
+    linkedin_url = parsed_data.get('linkedin')
+    if linkedin_url:
+        display_name = (linkedin_url.split('/')[-1] or 'LinkedIn').replace('-', ' ').title()
+        contact_parts.append(f"<span>🔗 <a href='{linkedin_url}'>{display_name}</a></span>")
+
+    github_url = parsed_data.get('github')
+    if github_url:
+        display_name = (github_url.split('/')[-1] or 'GitHub').replace('-', ' ').title()
+        contact_parts.append(f"<span>💻 <a href='{github_url}'>{display_name}</a></span>")
     
     html_content += f'<div class="contact-info">{" | ".join(contact_parts)}</div>'
     html_content += '</div>'
     
     # 2. Sections
+    # Defines the display order of sections
     section_order = ['personal_details', 'experience', 'projects', 'education', 'certifications', 'skills', 'strength']
     
     for k in section_order:
@@ -418,20 +423,21 @@ def generate_cv_html(parsed_data):
             if k == 'personal_details' and isinstance(v, str):
                 html_content += f"<p>{v}</p>"
             elif isinstance(v, list):
+                # Using <ul> for lists (experience, education, skills, etc.)
                 html_content += '<ul>'
                 for item in v:
                     if item: 
-                        # Escape any list items that might contain HTML/Markdown characters
-                        safe_item = item.replace('<', '&lt;').replace('>', '&gt;')
-                        html_content += f"<li>{safe_item}</li>"
+                        html_content += f"<li>{item}</li>"
                 html_content += '</ul>'
             else:
+                # Fallback for unexpected string value
                 html_content += f"<p>{v}</p>"
                 
             html_content += '</div></div>'
 
     html_content += '</body></html>'
     return html_content
+
 # --- END NEW HELPER FUNCTION ---
 
 
@@ -508,7 +514,7 @@ def get_download_link(data, filename, file_format):
         data_bytes = data.encode('utf-8')
         mime_type = "text/markdown"
     elif file_format == 'html':
-        # The data is already the full HTML content from generate_cv_html
+        # Now uses the new function to get the HTML content
         data_bytes = data.encode('utf-8')
         mime_type = "text/html"
     else:
@@ -1321,7 +1327,7 @@ def filter_jd_tab_content():
         st.info("Use the filters above and click **'Apply Filters'** to view matching Job Descriptions.")
 
 
-# --- Parsed Data View Tab (Modified for new HTML Generator) ---
+# --- Parsed Data Tab ---
 
 def parsed_data_tab():
     st.header("✨ Parsed Resume Data View")
@@ -1349,18 +1355,17 @@ def parsed_data_tab():
         parsed_json_data = json.dumps(st.session_state.parsed, indent=4)
         parsed_markdown_data = st.session_state.full_text
         
-        # --- NEW INTEGRATION POINT ---
-        parsed_html_data = generate_cv_html(st.session_state.parsed)
-        # --- END NEW INTEGRATION POINT ---
-        
+        # --- Use the new generate_cv_html function ---
+        generated_html_content = generate_cv_html(st.session_state.parsed)
+        # --- End use of new function ---
+
         json_filename = f"{base_filename}.json"
         md_filename = f"{base_filename}.md"
         html_filename = f"{base_filename}.html"
         
         json_data_uri = get_download_link(parsed_json_data, json_filename, 'json')
         md_data_uri = get_download_link(parsed_markdown_data, md_filename, 'markdown')
-        # Use the newly generated HTML data
-        html_data_uri = get_download_link(parsed_html_data, html_filename, 'html') 
+        html_data_uri = get_download_link(generated_html_content, html_filename, 'html')
         
         
         tab_markdown, tab_json, tab_download = st.tabs([
@@ -1411,8 +1416,8 @@ def parsed_data_tab():
         # --- Download Tab ---
         with tab_download:
             
-            st.markdown("### Download Viewable Document")
-            st.info("This download provides the structured data in a simple HTML file. You can open the HTML file and use your browser's 'Print to PDF' function to generate a clean PDF.")
+            st.markdown("### Download Viewable CV/Resume Document")
+            st.info("Click the button below to download the data as an HTML file, which is styled to look like a clean CV. You can then use your browser's print function to save it as a professional **PDF**.")
             
             col_html = st.columns(1)[0]
 
@@ -1421,7 +1426,7 @@ def parsed_data_tab():
                 render_download_button(
                     html_data_uri, 
                     html_filename, 
-                    f"📄 Download HTML (Printable CV)", 
+                    f"📄 Download Styled CV (.html)", 
                     'html'
                 )
                 
