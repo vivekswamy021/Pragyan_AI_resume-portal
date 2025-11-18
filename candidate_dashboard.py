@@ -62,7 +62,35 @@ class MockGroqClient:
                     else:
                         return type('MockResponse', (object,), {'choices': [type('Choice', (object,), {'message': type('Message', (object,), {'content': f'Based on the mock resume data, I can provide a simulated answer to your question about {question}.'})})()]})
 
-
+                # Check if it's a Cover Letter call
+                elif "You are an expert cover letter generator" in prompt_content:
+                    # Determine the JD role from the prompt (simple mock parsing)
+                    role_match = re.search(r'Job Description Role: (.*?)[\.\n]', prompt_content)
+                    role = role_match.group(1).strip() if role_match else "Software Engineer"
+                    
+                    mock_cover_letter = f"""
+                    [Date]
+                    
+                    [Hiring Manager Name/Title, if known]
+                    [Company Name]
+                    
+                    **Subject: Application for {role} Position - Vivek Swamy**
+                    
+                    Dear Hiring Manager,
+                    
+                    I am writing to express my enthusiastic interest in the **{role}** position at MockCorp, as detailed in the attached job description. My background, highlighted by strong skills in Python, AWS, and MLOps, aligns perfectly with your requirements for [Key Requirement from JD - e.g., cloud infrastructure management].
+                    
+                    During my time at Test Corp (simulated experience), I was responsible for [specific achievement related to JD]. My resume further details my proficiency in [Skill 1] and [Skill 2], which I believe would make me an immediate asset to your team.
+                    
+                    I am confident in my ability to contribute to your company's goals and I look forward to the opportunity to discuss my application further.
+                    
+                    Sincerely,
+                    
+                    Vivek Swamy
+                    [vivek.swamy@example.com]
+                    """
+                    return type('MockResponse', (object,), {'choices': [type('Choice', (object,), {'message': type('Message', (object,), {'content': mock_cover_letter})})()]})
+                
                 # Mock candidate data (Vivek Swamy) for parsing
                 mock_llm_json = {
                     "name": "Vivek Swamy", 
@@ -83,7 +111,7 @@ class MockGroqClient:
                     "strength": ["Mock Strength"], 
                 }
                 
-                # Mock response content for GroqClient initialization check
+                # Mock response content for GroqClient initialization check (for parsing)
                 message_obj = type('Message', (object,), {'content': json.dumps(mock_llm_json)})()
                 choice_obj = type('Choice', (object,), {'message': message_obj})()
                 response_obj = type('MockResponse', (object,), {'choices': [choice_obj]})()
@@ -138,7 +166,7 @@ class MockGroqClient:
                     response_obj = type('MockResponse', (object,), {'choices': [choice_obj]})()
                     return response_obj
                 
-                # Return standard parsing mock or Q&A mock
+                # If it's not a fit evaluation, run standard Completions logic (which includes cover letter/Q&A)
                 return super().create(**kwargs)
 
         return FitCompletions()
@@ -356,6 +384,7 @@ def clear_interview_state():
     # Retain the Q&A history states, only clear match-specific states
     if 'evaluation_report' in st.session_state: del st.session_state['evaluation_report']
     if 'candidate_match_results' in st.session_state: st.session_state.candidate_match_results = []
+    if 'generated_cover_letter' in st.session_state: del st.session_state['generated_cover_letter'] # Added clearing cover letter state
     
 # Updated signature to match the request
 def parse_and_store_resume(content_source, file_name_key, source_type):
@@ -408,31 +437,44 @@ def parse_and_store_resume(content_source, file_name_key, source_type):
     }
 
 
-def get_download_link(data, filename, file_format):
+def get_download_link(data, filename, file_format, title="Parsed Resume Data"):
     """
     Generates a base64 encoded download link for the given data and format.
     """
     mime_type = "application/octet-stream"
     
-    if file_format == 'json':
+    if file_format in ('json', 'markdown', 'text'):
         data_bytes = data.encode('utf-8')
-        mime_type = "application/json"
-    elif file_format == 'markdown':
-        data_bytes = data.encode('utf-8')
-        mime_type = "text/markdown"
+        if file_format == 'json':
+            mime_type = "application/json"
+        elif file_format == 'markdown':
+            mime_type = "text/markdown"
+        else: # text
+            mime_type = "text/plain"
+            
     elif file_format == 'html':
-        # Create a simple HTML document for rendering
+        # Convert markdown-like text to basic HTML for a clean printable document
         html_content = f"""
         <!DOCTYPE html>
         <html>
-        <head><title>{filename}</title></head>
-        <body style="font-family: Arial, sans-serif; padding: 20px;">
-        <h1 style="color: #4CAF50;">Parsed Resume Data: {filename.replace('.html', '')}</h1>
+        <head>
+            <title>{filename}</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; padding: 40px; line-height: 1.6; max-width: 800px; margin: auto; }}
+                h1 {{ color: #1E90FF; border-bottom: 2px solid #ddd; padding-bottom: 10px; }}
+                h2 {{ color: #333; margin-top: 20px; }}
+                pre {{ white-space: pre-wrap; word-wrap: break-word; background: #f4f4f4; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }}
+                p {{ margin-bottom: 15px; }}
+                .cover-letter {{ white-space: pre-wrap; }}
+            </style>
+        </head>
+        <body>
+        <h1>{title}: {filename.replace('.html', '')}</h1>
         <hr/>
-        <pre style="white-space: pre-wrap; word-wrap: break-word; background: #f4f4f4; padding: 10px; border: 1px solid #ddd;">
-        {data}
-        </pre>
-        <p>Generated by PragyanAI</p>
+        <div class="cover-letter">
+        {data.replace('\n', '<br>')}
+        </div>
+        <p style="margin-top: 30px; font-size: 10px; color: grey;">Generated by PragyanAI</p>
         </body>
         </html>
         """
@@ -458,6 +500,9 @@ def render_download_button(data_uri, filename, label, color):
     elif color == 'html':
         bg_color = "#f44336" # Red
         icon = "📄"
+    elif color == 'cover':
+        bg_color = "#FFC300" # Yellow/Orange
+        icon = "✉️"
     else:
         bg_color = "#555555"
         icon = ""
@@ -638,6 +683,72 @@ def evaluate_jd_fit(job_description, parsed_json):
         error_output = f"AI Evaluation Error: Failed to connect or receive response from LLM. Error: {e}\n{traceback.format_exc()}"
         return error_output
 # --- END EVALUATE JD FIT FUNCTION ---
+
+# --- GENERATE COVER LETTER FUNCTION (NEW) ---
+
+def generate_cover_letter_llm(jd_content, parsed_json, preferred_style="Standard"):
+    """
+    Generates a cover letter based on JD and parsed resume data.
+    """
+    global client, GROQ_MODEL, GROQ_API_KEY
+    
+    if parsed_json.get('error') is not None: 
+         return f"Cannot generate cover letter due to resume parsing errors: {parsed_json['error']}"
+
+    if not jd_content.strip(): return "Please provide a Job Description to generate the letter."
+
+    # Extract required info for context
+    candidate_name = parsed_json.get('name', 'The Candidate')
+    candidate_email = parsed_json.get('email', '[Candidate Email]')
+    candidate_skills = ", ".join(parsed_json.get('skills', []))
+    candidate_experience = "\n".join(parsed_json.get('experience', []))
+    
+    # Use extracted JD metadata for subject line/title
+    jd_metadata = extract_jd_metadata(jd_content)
+    jd_role = jd_metadata.get('role', 'the position')
+
+    # Prepare LLM Prompt
+    prompt = f"""
+    You are an expert cover letter generator. Your task is to write a highly professional, engaging, and concise cover letter 
+    that highlights the candidate's fit for the specific job description provided.
+    
+    **Instructions:**
+    1.  **Style:** Adopt a **{preferred_style}** tone.
+    2.  **Structure:** Use standard cover letter format.
+    3.  **Customization:** Directly reference the skills and experience listed in the candidate's resume that match the job description's requirements.
+    4.  **Length:** Keep it brief, no more than four paragraphs.
+    5.  **Output Format:** Output the letter text only, using double newlines for paragraph breaks. Include placeholders like [Date], [Hiring Manager Name/Title, if known], and [Company Name] where necessary. Use bold formatting for the job title.
+    
+    --- Candidate Information ---
+    Candidate Name: {candidate_name}
+    Candidate Contact: {candidate_email}
+    Key Skills: {candidate_skills}
+    Relevant Experience: {candidate_experience}
+    
+    --- Job Description Information ---
+    Job Description Role: {jd_role}
+    Job Description Content:
+    {jd_content}
+    """
+    
+    if isinstance(client, MockGroqClient) and not GROQ_API_KEY:
+         # Use the mock client's default mock response for cover letter
+         response = client.chat().create(model=GROQ_MODEL, messages=[{"role": "user", "content": prompt}])
+         return response.choices[0].message.content.strip()
+
+    try:
+        response = client.chat.completions.create(
+            model=GROQ_MODEL, 
+            messages=[{"role": "user", "content": prompt}], 
+            temperature=0.7 # Higher temperature for creative/writing task
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        error_output = f"AI Generation Error: Failed to connect or receive response from LLM. Error: {e}\n{traceback.format_exc()}"
+        return error_output
+
+# --- END GENERATE COVER LETTER FUNCTION ---
+
 
 # --- Tab Content Functions ---
     
@@ -1060,22 +1171,6 @@ def jd_batch_match_tab():
                 st.rerun() 
 
 
-    # 3. Display Results (REMOVED SECTION)
-    # The following code block has been removed as per the user's request:
-    # --------------------------------------------------------------------------------
-    # if st.session_state.get('candidate_match_results'):
-    #     st.markdown("#### Match Results for Your Resume")
-    #     results_df = st.session_state.candidate_match_results
-        
-    #     display_data = []
-    #     # [Code to process results_df for display_data...]
-    #     
-    #     st.dataframe(display_data, use_container_width=True)
-    #
-    #     st.markdown("##### Detailed Reports")
-    #     # [Code to display detailed reports in expanders...]
-    # --------------------------------------------------------------------------------
-    
     # Placeholder for the removed section:
     if st.session_state.get('candidate_match_results'):
          st.markdown("---")
@@ -1256,9 +1351,10 @@ def parsed_data_tab():
         md_filename = f"{base_filename}.md"
         html_filename = f"{base_filename}.html"
         
-        json_data_uri = get_download_link(parsed_json_data, json_filename, 'json')
-        md_data_uri = get_download_link(parsed_markdown_data, md_filename, 'markdown')
-        html_data_uri = get_download_link(parsed_markdown_data, html_filename, 'html')
+        json_data_uri = get_download_link(parsed_json_data, json_filename, 'json', title="Parsed Resume Data")
+        md_data_uri = get_download_link(parsed_markdown_data, md_filename, 'markdown', title="Parsed Resume Data")
+        # Use a simpler text format for HTML conversion for resume markdown
+        html_data_uri = get_download_link(parsed_markdown_data.replace('\n', '<br>').replace('##', '<h2>'), html_filename, 'html', title="Parsed Resume Data") 
         
         
         tab_markdown, tab_json, tab_download = st.tabs([
@@ -1333,6 +1429,135 @@ def parsed_data_tab():
              st.error(f"Last Parsing Error: {st.session_state.parsed['error']}")
         st.info("Please successfully parse a resume in the **Resume Parsing** tab.")
 
+# --- New Cover Letter Generation Tab ---
+
+def generate_cover_letter_tab():
+    st.header("✉️ Generate Cover Letter")
+    st.markdown("Create a customized cover letter for a specific Job Description using your parsed resume data.")
+    st.markdown("---")
+
+    is_resume_parsed = (
+        st.session_state.get('parsed', {}).get('name') is not None and 
+        st.session_state.get('parsed', {}).get('error') is None
+    )
+    
+    if not is_resume_parsed:
+        st.warning("⚠️ **Cover Letter Disabled:** Please parse a valid resume in the 'Resume Parsing' tab first.")
+        return
+        
+    if not st.session_state.get('candidate_jd_list'):
+        st.error("❌ Please **add Job Descriptions** in the 'JD Management' tab first.")
+        return
+        
+    # 1. Select JD
+    jd_names = [jd['name'] for jd in st.session_state.candidate_jd_list]
+    selected_jd_name = st.selectbox(
+        "Select Job Description for Cover Letter",
+        options=jd_names,
+        key="selected_jd_for_cl"
+    )
+
+    selected_jd = next((jd for jd in st.session_state.candidate_jd_list if jd['name'] == selected_jd_name), None)
+    
+    if not selected_jd:
+        st.error("Selected JD not found.")
+        return
+    
+    # 2. Options and Generation Button
+    st.markdown("---")
+    col_style, col_gen = st.columns([1, 1])
+    
+    with col_style:
+        style = st.selectbox(
+            "Select Letter Style/Tone",
+            options=["Standard", "Enthusiastic", "Professional", "Concise"],
+            key="cl_style"
+        )
+        
+    with col_gen:
+        # Placeholder for alignment
+        st.write("") 
+        st.write("") 
+        if st.button("✨ Generate Cover Letter", use_container_width=True, type="primary"):
+            st.session_state.generated_cover_letter = ""
+            with st.spinner(f"Generating personalized cover letter for **{selected_jd['name']}**..."):
+                letter_text = generate_cover_letter_llm(
+                    jd_content=selected_jd['content'], 
+                    parsed_json=st.session_state.parsed,
+                    preferred_style=style
+                )
+                st.session_state.generated_cover_letter = letter_text
+                st.session_state.cl_jd_name = selected_jd_name # Store JD name with the letter
+                st.rerun()
+                
+    st.markdown("---")
+    
+    # 3. Display and Download
+    if "generated_cover_letter" in st.session_state and st.session_state.generated_cover_letter:
+        
+        st.subheader(f"✅ Generated Cover Letter for: {st.session_state.cl_jd_name}")
+        
+        if st.session_state.generated_cover_letter.startswith("Cannot generate") or st.session_state.generated_cover_letter.startswith("AI Generation Error"):
+            st.error(st.session_state.generated_cover_letter)
+            return
+
+        # Display the letter
+        st.text_area(
+            "Review and edit the generated cover letter:",
+            value=st.session_state.generated_cover_letter,
+            height=400,
+            key="final_cover_letter_edit"
+        )
+        
+        # Use the possibly edited text for download
+        final_letter_text = st.session_state.final_cover_letter_edit
+        
+        # Download Buttons
+        st.markdown("##### Download Options")
+        
+        candidate_name = st.session_state.parsed.get('name', 'Candidate').replace(' ', '_')
+        jd_role = selected_jd.get('role', 'Job').replace('/', '_').replace(' ', '_')
+        base_filename = f"{candidate_name}_CoverLetter_{jd_role}"
+        
+        html_filename = f"{base_filename}.html"
+        txt_filename = f"{base_filename}.txt"
+        
+        # Generate URIs
+        html_data_uri = get_download_link(
+            final_letter_text, 
+            html_filename, 
+            'html',
+            title=f"Cover Letter for {jd_role}"
+        )
+        txt_data_uri = get_download_link(
+            final_letter_text, 
+            txt_filename, 
+            'text',
+            title=f"Cover Letter for {jd_role}"
+        )
+        
+        col_html_dl, col_txt_dl = st.columns(2)
+        
+        with col_html_dl:
+            render_download_button(
+                html_data_uri, 
+                html_filename, 
+                f"📄 Download as HTML (Print to PDF)", 
+                'cover'
+            )
+            
+        with col_txt_dl:
+            render_download_button(
+                txt_data_uri, 
+                txt_filename, 
+                f"⬇️ Download as Plain Text (.txt)", 
+                'markdown'
+            )
+            
+    elif "generated_cover_letter" not in st.session_state or not st.session_state.generated_cover_letter:
+        st.info("Select a Job Description and click 'Generate Cover Letter' to begin.")
+        
+        
 # --------------------------------------------------------------------------------------
 # CHATBOT FUNCTIONALITY
 # --------------------------------------------------------------------------------------
@@ -1556,14 +1781,16 @@ def candidate_dashboard():
     if "candidate_match_results" not in st.session_state: st.session_state.candidate_match_results = []
     if 'filtered_jds_display' not in st.session_state: st.session_state.filtered_jds_display = []
     if 'last_selected_skills' not in st.session_state: st.session_state.last_selected_skills = []
+    if 'generated_cover_letter' not in st.session_state: st.session_state.generated_cover_letter = "" # Added CL state
+    if 'cl_jd_name' not in st.session_state: st.session_state.cl_jd_name = "" # Added CL JD Name state
     
     # Chatbot history initialized separately for each sub-tab
     if "resume_chatbot_history" not in st.session_state: st.session_state.resume_chatbot_history = []
     if "jd_chatbot_history" not in st.session_state: st.session_state.jd_chatbot_history = {} # Keyed by JD name
 
-    # --- Main Content with Tabs (ALL TABS KEPT) ---
-    tab_parsing, tab_data_view, tab_jd, tab_batch_match, tab_filter_jd, tab_chatbot = st.tabs(
-        ["📄 Resume Parsing", "✨ Parsed Data View", "📚 JD Management", "🎯 Batch JD Match", "🔍 Filter JD", "🤖 Chatbot"]
+    # --- Main Content with Tabs (New Tab Added) ---
+    tab_parsing, tab_data_view, tab_jd, tab_batch_match, tab_filter_jd, tab_cover_letter, tab_chatbot = st.tabs(
+        ["📄 Resume Parsing", "✨ Parsed Data View", "📚 JD Management", "🎯 Batch JD Match", "🔍 Filter JD", "✉️ Generate Cover Letter", "🤖 Chatbot"]
     )
     
     with tab_parsing:
@@ -1580,6 +1807,9 @@ def candidate_dashboard():
         
     with tab_filter_jd:
         filter_jd_tab_content()
+        
+    with tab_cover_letter:
+        generate_cover_letter_tab() # New function call
         
     with tab_chatbot:
         chatbot_tab_content()
