@@ -47,7 +47,7 @@ class MockGroqClient:
                     if 'role' in question.lower():
                         return type('MockResponse', (object,), {'choices': [type('Choice', (object,), {'message': type('Message', (object,), {'content': 'The required role in this Job Description is Cloud Engineer.'})})()]})
                     elif 'experience' in question.lower():
-                        return type('MockResponse', (object,), {'choices': [type('Choice', (object,), {'message': type('Message', (object,), {'content': 'The job requires 3+ years of experience in AWS/GCP and infrastructure automation.'})})()]})
+                        return type('MockResponse', (object,), {'choices': [type('Message', (object,), {'content': 'The job requires 3+ years of experience in AWS/GCP and infrastructure automation.'})})()]})
                     else:
                         return type('MockResponse', (object,), {'choices': [type('Choice', (object,), {'message': type('Message', (object,), {'content': f'Mock answer for JD question: The JD mentions Python and Docker as key skills.'})})()]})
 
@@ -71,7 +71,9 @@ class MockGroqClient:
                     "phone": "555-1234", 
                     "linkedin": "https://linkedin.com/in/vivek-swamy-mock", 
                     "github": "https://github.com/vivek-mock", 
-                    "personal_details": "Mock summary generated for: Vivek Swamy.", 
+                    # --- FIX: Ensure personal_details is a string, not an empty dict ---
+                    "personal_details": "Highly motivated individual based in San Francisco, CA.", 
+                    # --- END FIX ---
                     "skills": [
                         "Python", "SQL", "AWS", "Streamlit", 
                         "LLM Integration", "MLOps", "Data Visualization", 
@@ -294,18 +296,22 @@ def parse_resume_with_llm(text):
 
     # 4. Handle Real Groq Client execution 
     
+    # --- FIX: Refined Prompt to request 'personal_details' as a single string summary ---
     prompt = f"""Extract the following information from the resume in structured JSON.
     Ensure all relevant details for each category are captured.
-    - Name, - Email, - - Phone, - Skills (list), - Education (list of degrees/institutions/dates), 
+    - Name, - Email, - Phone, - Skills (list), - Education (list of degrees/institutions/dates), 
     - Experience (list of job roles/companies/dates/responsibilities), - Certifications (list), 
     - Projects (list of project names/descriptions/technologies), - Strength (list of personal strengths/qualities), 
-    - Personal Details (e.g., address, date of birth, nationality), - Github (URL), - LinkedIn (URL)
+    - Personal Details (Provide a single string summarizing details like address, date of birth, or nationality, if present. If not present, use an empty string ""), 
+    - Github (URL), - LinkedIn (URL)
     
     Resume Text:
     {text}
     
     Provide the output strictly as a JSON object.
     """
+    # --- END FIX ---
+    
     content = ""
     parsed = {}
     json_str = ""
@@ -353,9 +359,7 @@ def parse_resume_with_llm(text):
         error_msg = f"LLM API interaction error: {e}"
         return {"name": get_fallback_name(), "error": error_msg}
 
-# -----------------------------------------------------------
-# END ADAPTED FUNCTION
-# -----------------------------------------------------------
+# --- END ADAPTED FUNCTION ---
 
 
 # --- NEW HELPER FUNCTION FOR HTML/PDF Generation ---
@@ -415,13 +419,37 @@ def generate_cv_html(parsed_data):
         # Skip contact details already handled
         if k in ['name', 'email', 'phone', 'linkedin', 'github']: continue 
 
-        if v and (isinstance(v, str) and v.strip() or isinstance(v, list) and v):
+        # --- FIX: Update check for valid data ---
+        is_valid_data = False
+        if isinstance(v, str) and v.strip():
+            is_valid_data = True
+        elif isinstance(v, list) and v:
+            is_valid_data = True
+        elif isinstance(v, dict) and any(val for val in v.values()): # Handle cases where LLM still returns dict with content
+            is_valid_data = True
+        
+        if is_valid_data:
             
             html_content += f'<div class="section"><h2>{k.replace("_", " ").title()}</h2>'
             html_content += '<div class="item-list">'
             
-            if k == 'personal_details' and isinstance(v, str):
-                html_content += f"<p>{v}</p>"
+            if k == 'personal_details':
+                # FIX: Handle string summary (preferred) and fall back to dict
+                if isinstance(v, str):
+                    html_content += f"<p>{v}</p>"
+                elif isinstance(v, dict):
+                    # Format dictionary content as a simple list for display
+                    details = [f"**{key.replace('_', ' ').title()}** : {value}" for key, value in v.items() if value]
+                    if details:
+                        html_content += '<ul>'
+                        for detail in details:
+                            html_content += f"<li>{detail}</li>"
+                        html_content += '</ul>'
+                    else:
+                        # Skip if dictionary is empty/all values are empty
+                        html_content = html_content.removesuffix(f'<div class="section"><h2>{k.replace("_", " ").title()}</h2><div class="item-list">')
+                        continue
+
             elif isinstance(v, list):
                 # Using <ul> for lists (experience, education, skills, etc.)
                 html_content += '<ul>'
@@ -484,9 +512,25 @@ def parse_and_store_resume(content_source, file_name_key, source_type):
     compiled_text = ""
     for k, v in parsed_data.items():
         if v and k not in ['error']:
+            # FIX: Only display the section header if the content is not an empty string or empty list/dict
+            
+            # Check for empty string/list/dict
+            if isinstance(v, str) and not v.strip(): continue
+            if isinstance(v, list) and not v: continue
+            if isinstance(v, dict) and not any(val for val in v.values()): continue # Fix for dicts like {'a':'', 'b':''}
+
             compiled_text += f"## {k.replace('_', ' ').title()}\n\n"
+            
             if isinstance(v, list):
-                compiled_text += "\n".join([f"* {item}" for item in v]) + "\n\n"
+                compiled_text += "\n".join([f"* {item}" for item in v if item]) + "\n\n"
+            elif isinstance(v, dict):
+                 # FIX: Nicely format dictionary content
+                dict_content = [f"- **{key.replace('_', ' ').title()}**: {value}" for key, value in v.items() if value]
+                if dict_content:
+                    compiled_text += "\n".join(dict_content) + "\n\n"
+                else:
+                    # Skip if the dictionary had valid keys but empty values
+                    compiled_text = compiled_text.removesuffix(f"## {k.replace('_', ' ').title()}\n\n")
             else:
                 compiled_text += str(v) + "\n\n"
 
