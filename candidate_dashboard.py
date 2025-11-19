@@ -1278,7 +1278,7 @@ def jd_management_tab_candidate():
         st.info("No Job Descriptions added yet.")
         
 # --- TAB 3 (Now tab_batch_match): Batch JD Match (Candidate) ---
-    with tab_batch_match:
+    with jd_batch_match_tab():
         st.header("🎯 Batch JD Match: Best Matches")
         st.markdown("Compare your current resume against all saved job descriptions.")
 
