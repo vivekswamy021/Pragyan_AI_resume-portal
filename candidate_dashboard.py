@@ -1131,8 +1131,12 @@ def cv_management_tab():
             'experience': [],
             'projects': [],
             'certifications': [],
-            'strengths_raw': '' # NEW: To hold raw text area input for strengths
+            'strengths_raw': '' 
         }
+    # FIX: Check for the existence of the NEW key in the existing state
+    if 'strengths_raw' not in st.session_state.cv_data:
+        st.session_state.cv_data['strengths_raw'] = ''
+        
     if 'form_cv_text' not in st.session_state:
         st.session_state.form_cv_text = ""
 
@@ -1180,7 +1184,8 @@ def cv_management_tab():
                 st.success(f"Added: {entry}")
             else:
                 st.error("Please enter Degree and University.")
-    st.dataframe(st.session_state.cv_data['education'], use_container_width=True, hide_index=True)
+    if st.session_state.cv_data['education']:
+        st.dataframe(st.session_state.cv_data['education'], use_container_width=True, hide_index=True)
     st.markdown("---")
 
     # --- 3. Experience ---
@@ -1211,7 +1216,8 @@ def cv_management_tab():
                 st.success(f"Added: {role} at {company}")
             else:
                 st.error("Please enter Company Name and Role.")
-    st.dataframe(st.session_state.cv_data['experience'], use_container_width=True, hide_index=True)
+    if st.session_state.cv_data['experience']:
+        st.dataframe(st.session_state.cv_data['experience'], use_container_width=True, hide_index=True)
     st.markdown("---")
 
     # --- 4. Projects ---
@@ -1234,7 +1240,8 @@ def cv_management_tab():
                 st.success(f"Added Project: {project_name}")
             else:
                 st.error("Please enter Project Name.")
-    st.dataframe(st.session_state.cv_data['projects'], use_container_width=True, hide_index=True)
+    if st.session_state.cv_data['projects']:
+        st.dataframe(st.session_state.cv_data['projects'], use_container_width=True, hide_index=True)
     st.markdown("---")
 
     # --- 5. Certifications ---
@@ -1259,12 +1266,14 @@ def cv_management_tab():
                 st.success(f"Added Certification: {title}")
             else:
                 st.error("Please enter Certificate Title.")
-    st.dataframe(st.session_state.cv_data['certifications'], use_container_width=True, hide_index=True)
+    if st.session_state.cv_data['certifications']:
+        st.dataframe(st.session_state.cv_data['certifications'], use_container_width=True, hide_index=True)
     st.markdown("---")
 
     # --- 6. Strengths (NEW SECTION) ---
     st.subheader("6. Strengths")
     # Bind text area directly to the 'strengths_raw' session state variable
+    # We must explicitly read the input value and assign it back to the session state key
     st.session_state.cv_data['strengths_raw'] = st.text_area(
         "Enter your key strengths (one per line)",
         value=st.session_state.cv_data['strengths_raw'],
@@ -1291,7 +1300,7 @@ def cv_management_tab():
         
         text += "--- Experience ---\n"
         if data['experience']:
-            text += "\n".join(data['experience']) + "\n\n"
+            text += "--- Experience ---\n" + "\n".join(data['experience']) + "\n\n"
             
         text += "--- Projects ---\n"
         if data['projects']:
@@ -1302,17 +1311,16 @@ def cv_management_tab():
             text += "\n".join(data['certifications']) + "\n\n"
             
         # Add Strengths (processed from raw text input)
-        strengths_list = [s.strip() for s in data.get('strengths_raw', '').split('\n') if s.strip()]
-        text += "--- Strengths ---\n"
-        if strengths_list:
-            text += "\n".join(strengths_list) + "\n\n"
+        strengths_raw_data = data.get('strengths_raw', '')
+        if strengths_raw_data:
+            strengths_list = [s.strip() for s in strengths_raw_data.split('\n') if s.strip()]
+            if strengths_list:
+                text += "--- Strengths ---\n"
+                text += "\n".join(strengths_list) + "\n\n"
             
         return text.strip()
 
     if st.button("Generate CV Text for Parsing", type="primary", use_container_width=True):
-        # The fix to make the generation work is ensuring all inputs (including the new one) 
-        # are correctly bound to session state, which we have done. 
-        # This button click simply executes the function and updates the state variable.
         st.session_state.form_cv_text = generate_cv_text()
         st.info("CV Text Generated. Go to **Resume Parsing** tab and select 'Use Form Data'.")
         
@@ -1338,9 +1346,9 @@ def cv_management_tab():
             'strengths_raw': '' # Reset the new field
         }
         st.session_state.form_cv_text = ""
-        st.success("All CV form data cleared.")
-        st.rerun() # Rerun to clear input widgets immediately
-
+        # Rerun to clear the forms completely
+        st.rerun()
+        
 # --- JD Management Tab Function ---
         
 def jd_management_tab_candidate():
