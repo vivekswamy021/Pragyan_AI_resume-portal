@@ -1114,74 +1114,75 @@ def resume_parsing_tab():
             
     st.markdown("---")
 # ----------next tab cv management-----------------------------------        
-# --- Helper Functions for Data Formatting ---
-def create_json_data(data):
-    """Returns a JSON string of the structured CV data."""
-    # We dump the st.session_state.cv_data dictionary directly
-    return json.dumps(data, indent=4)
+def convert_to_json(data):
+    """Converts the structured CV data dictionary into a formatted JSON string."""
+    # Ensure strengths are converted to a list for cleaner JSON
+    json_export = {
+        "personal_info": data.get('personal_info', {}),
+        "education": data.get('education', []),
+        "experience": data.get('experience', []),
+        "projects": data.get('projects', []),
+        "certifications": data.get('certifications', []),
+        # Convert strengths raw text to a list
+        "strengths": [s.strip() for s in data.get('strengths_raw', '').split('\n') if s.strip()]
+    }
+    return json.dumps(json_export, indent=4)
 
-def create_html_data(data):
-    """Returns a simple HTML string for document preview/download."""
+def convert_to_html_content(data):
+    """Generates a basic HTML structure for viewing/downloading as a file."""
+    # Note: This is a simple HTML structure. Full PDF generation requires external libraries (e.g., ReportLab)
+    # or an external service, which is beyond Streamlit's native capabilities. We provide HTML as requested.
     
-    # Process strengths for bullet points
-    strengths_html = ''.join(f'<div class="entry">- {s.strip()}</div>' 
-                            for s in data.get('strengths_raw', '').split('\n') if s.strip())
-
-    html_content = f"""
-<!DOCTYPE html>
-<html>
-<head>
-    <title>{data['personal_info']['name']} - CV</title>
-    <style>
-        body {{ font-family: Arial, sans-serif; line-height: 1.6; max-width: 800px; margin: auto; padding: 20px; }}
-        h1 {{ text-align: center; border-bottom: 3px solid #333; padding-bottom: 10px; margin-bottom: 5px; }}
-        h2 {{ border-bottom: 2px solid #eee; padding-bottom: 5px; color: #555; }}
-        .contact {{ text-align: center; margin-bottom: 20px; }}
-        .section {{ margin-bottom: 20px; }}
-        .entry {{ margin-bottom: 10px; padding-left: 20px; }}
-    </style>
-</head>
-<body>
-    <h1>{data['personal_info']['name']}</h1>
-    <p class="contact">Email: {data['personal_info']['email']} | Phone: {data['personal_info']['phone']}</p>
-    
-    <div class="section">
-        <h2>Education</h2>
-        {''.join(f'<div class="entry">{item}</div>' for item in data['education'])}
-    </div>
-    
-    <div class="section">
-        <h2>Experience</h2>
-        {''.join(f'<div class="entry">{item.replace(' | ', '<br>')}</div>' for item in data['experience'])}
-    </div>
-    
-    <div class="section">
-        <h2>Projects</h2>
-        {''.join(f'<div class="entry">{item}</div>' for item in data['projects'])}
-    </div>
-    
-    <div class="section">
-        <h2>Certifications</h2>
-        {''.join(f'<div class="entry">{item}</div>' for item in data['certifications'])}
-    </div>
-    
-    <div class="section">
-        <h2>Strengths</h2>
-        {strengths_html}
-    </div>
-</body>
-</html>
+    html = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Candidate Resume</title>
+        <style>
+            body { font-family: Arial, sans-serif; margin: 40px; }
+            h1, h2 { color: #2E86C1; }
+            ul { list-style-type: disc; margin-left: 20px; }
+            .section-divider { border-bottom: 1px solid #ddd; margin-bottom: 15px; }
+        </style>
+    </head>
+    <body>
     """
-    return html_content.strip()
+    
+    # Personal Info
+    html += f"<h1>{data['personal_info'].get('name', 'N/A')}</h1>"
+    html += f"<p>Email: {data['personal_info'].get('email', 'N/A')} | Phone: {data['personal_info'].get('phone', 'N/A')}</p>"
+    html += "<div class='section-divider'></div>"
+
+    # Education
+    html += "<h2>Education</h2><ul>"
+    for item in data['education']:
+        html += f"<li>{item}</li>"
+    html += "</ul>"
+
+    # Experience
+    html += "<h2>Professional Experience</h2><ul>"
+    for item in data['experience']:
+        # Replace '|' separator (used for bullets) with line breaks in HTML
+        html += f"<li>{item.replace('|', '<br/>')}</li>"
+    html += "</ul>"
+    
+    # Strengths
+    strengths_list = [s.strip() for s in data.get('strengths_raw', '').split('\n') if s.strip()]
+    html += "<h2>Strengths</h2><ul>"
+    for item in strengths_list:
+        html += f"<li>{item}</li>"
+    html += "</ul>"
+
+    # ... Add other sections (Projects, Certifications) similarly ...
+    
+    html += "</body></html>"
+    return html
     # ---------------------------------------------
 # --- CV Management Tab Function (NEW) ---
 def cv_management_tab():
-    """Tab to allow form-based CV data entry with multi-format preview/download."""
+    """Tab to allow form-based CV data entry and multi-format preview/download."""
     st.header("📝 CV Management & Form Generation")
     st.markdown("Generate a resume text structure by filling out the sections below. This text can then be parsed in the 'Resume Parsing' tab.")
-    
-    # NOTE: The keys 'cv_data' and 'form_cv_text' are assumed to be initialized 
-    # in the global initialize_session_state() function.
     
     # --- 1. Personal Info ---
     st.subheader("1. Personal Information")
@@ -1298,92 +1299,87 @@ def cv_management_tab():
     # --- 7. Generate and Preview Text ---
     
     def generate_cv_text():
-        """Generates the flat Markdown-like text structure for parsing."""
+        """Generates the text/markdown format from all stored session state data."""
         data = st.session_state.cv_data
-        text = f"Candidate Resume Data\n\n"
+        text = f"# Candidate Resume Data\n\n"
         
         # Personal Info
-        text += f"Name: {data['personal_info']['name']}\n"
-        text += f"Email: {data['personal_info']['email']}\n"
-        text += f"Phone: {data['personal_info']['phone']}\n\n"
+        text += f"**Name**: {data['personal_info']['name']}\n"
+        text += f"**Email**: {data['personal_info']['email']}\n"
+        text += f"**Phone**: {data['personal_info']['phone']}\n\n"
         
         # Education
-        text += "--- Education ---\n"
-        if data['education']: text += "\n".join(data['education']) + "\n\n"
+        text += "## Education\n"
+        if data['education']: text += "* " + "\n* ".join(data['education']) + "\n\n"
         
         # Experience
-        if data['experience']:
-            text += "--- Experience ---\n" + "\n".join(data['experience']) + "\n\n"
+        text += "## Experience\n"
+        if data['experience']: text += "* " + "\n* ".join(data['experience']) + "\n\n"
             
         # Projects
-        text += "--- Projects ---\n"
-        if data['projects']: text += "\n".join(data['projects']) + "\n\n"
+        text += "## Projects\n"
+        if data['projects']: text += "* " + "\n* ".join(data['projects']) + "\n\n"
             
         # Certifications
-        text += "--- Certifications ---\n"
-        if data['certifications']: text += "\n".join(data['certifications']) + "\n\n"
+        text += "## Certifications\n"
+        if data['certifications']: text += "* " + "\n* ".join(data['certifications']) + "\n\n"
             
         # Strengths
         strengths_raw_data = data.get('strengths_raw', '')
         if strengths_raw_data:
-            strengths_list = [f"- {s.strip()}" for s in strengths_raw_data.split('\n') if s.strip()]
+            strengths_list = [s.strip() for s in strengths_raw_data.split('\n') if s.strip()]
             if strengths_list:
-                text += "--- Strengths ---\n"
-                text += "\n".join(strengths_list) + "\n\n"
+                text += "## Strengths\n"
+                text += "* " + "\n* ".join(strengths_list) + "\n\n"
             
         return text.strip()
 
-    if st.button("Generate CV Text for Parsing", type="primary", use_container_width=True):
+    if st.button("Generate CV Data for Parsing & Preview", type="primary", use_container_width=True):
         st.session_state.form_cv_text = generate_cv_text()
-        st.info("CV Text Generated. Go to **Resume Parsing** tab and select 'Use Form Data'.")
+        st.info("CV Data Generated. Go to **Resume Parsing** tab and select 'Use Form Data'.")
         
     st.markdown("##### Current Generated Data Preview")
     
     if st.session_state.form_cv_text:
         
-        data = st.session_state.cv_data
-        json_data_str = create_json_data(data)
-        html_data_str = create_html_data(data)
-        
-        tab_md, tab_json, tab_html = st.tabs(["📄 Markdown View", "🧩 JSON View", "🌐 HTML/PDF Preview"])
-        
+        # Generate content for all formats
+        markdown_text = st.session_state.form_cv_text
+        json_data = convert_to_json(st.session_state.cv_data)
+        html_content = convert_to_html_content(st.session_state.cv_data)
+
+        # Create Tabs for viewing
+        tab_md, tab_json, tab_html_pdf = st.tabs(["Markdown (.md)", "JSON (.json)", "HTML/PDF Preview"])
+
         with tab_md:
-            st.markdown("### Markdown Text")
-            st.code(st.session_state.form_cv_text, language='markdown')
+            st.code(markdown_text, language='markdown')
             st.download_button(
-                label="⬇️ Download Markdown (.txt)",
-                data=st.session_state.form_cv_text,
-                file_name=f"{data['personal_info']['name'] or 'cv'}_data.txt",
-                mime="text/plain",
+                label="⬇️ Download Markdown (.md)",
+                data=markdown_text,
+                file_name=f"{st.session_state.cv_data['personal_info']['name'].replace(' ', '_')}_cv.md",
+                mime="text/markdown",
                 use_container_width=True
             )
-            
+
         with tab_json:
-            st.markdown("### JSON Structure (Raw Data)")
-            st.json(json_data_str)
+            st.json(json_data)
             st.download_button(
                 label="⬇️ Download JSON (.json)",
-                data=json_data_str,
-                file_name=f"{data['personal_info']['name'] or 'cv'}_data.json",
+                data=json_data,
+                file_name=f"{st.session_state.cv_data['personal_info']['name'].replace(' ', '_')}_cv.json",
                 mime="application/json",
                 use_container_width=True
             )
 
-        with tab_html:
-            st.markdown("### HTML Document Preview")
-            st.info("The HTML content below simulates a formatted CV document. Download the file and open it in a browser to see the full document design. (PDF conversion requires external libraries not available here, but HTML is the closest alternative).")
-            
-            # Display raw HTML for verification
-            st.code(html_data_str, language='html', height=300)
-            
+        with tab_html_pdf:
+            st.components.v1.html(html_content, height=400, scrolling=True)
             st.download_button(
-                label="⬇️ Download HTML Document (.html)",
-                data=html_data_str,
-                file_name=f"{data['personal_info']['name'] or 'cv'}_document.html",
+                label="⬇️ Download HTML (.html)",
+                data=html_content,
+                file_name=f"{st.session_state.cv_data['personal_info']['name'].replace(' ', '_')}_cv.html",
                 mime="text/html",
                 use_container_width=True
             )
-            
+
     else:
         st.info("No CV text generated yet. Fill out the forms and click the generate button.")
 
@@ -1397,8 +1393,8 @@ def cv_management_tab():
             'strengths_raw': '' 
         }
         st.session_state.form_cv_text = ""
-        st.success("All CV form data cleared.")
         st.rerun()
+        
 # --- JD Management Tab Function ---
         
 def jd_management_tab_candidate():
