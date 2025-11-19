@@ -38,10 +38,7 @@ def initialize_session_state():
     if 'generated_cover_letter' not in st.session_state: st.session_state.generated_cover_letter = "" 
     if 'cl_jd_name' not in st.session_state: st.session_state.cl_jd_name = "" 
     
-    # Hiring Manager Data (Placeholder)
-    if 'hiring_jds' not in st.session_state: st.session_state.hiring_jds = []
-
-
+    
 def login_page():
     """Handles the user login and redirects to the appropriate dashboard."""
     st.title("Welcome to PragyanAI - Login")
