@@ -2599,8 +2599,8 @@ def chatbot_tab_content():
 # CANDIDATE DASHBOARD FUNCTION 
 # -------------------------
 
-def candidate_dashboard():
-    # Set page config once at the start
+def candidate_dashboard(go_to): # <-- ADD 'go_to' HERE 
+# Set page config once at the start
     st.set_page_config(layout="wide", page_title="PragyanAI Candidate Dashboard")
     
     st.title("🧑‍💻 Candidate Dashboard")
