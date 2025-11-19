@@ -577,9 +577,8 @@ def vendor_approval_tab_content():
         st.dataframe(summary_data, use_container_width=True)
 
 
-def admin_dashboard():
+def admin_dashboard(go_to): # <-- ADD 'go_to' HERE    
     st.title("🧑‍💼 Admin Dashboard")
-    
     nav_col, _ = st.columns([1, 1]) 
 
     with nav_col:
