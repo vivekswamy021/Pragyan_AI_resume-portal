@@ -1,7 +1,9 @@
+# app.py
+
 import streamlit as st
 from admin_dashboard import admin_dashboard
 from candidate_dashboard import candidate_dashboard
-from hiring_dashboard import hiring_dashboard # Placeholder for the third dashboard
+from hiring_dashboard import hiring_dashboard
 
 # --- Utility Functions for Navigation and State Management ---
 
@@ -77,7 +79,7 @@ def login_page():
                 st.error("Invalid username. Please use 'candidate', 'admin', or 'hiring'.")
 
 # -------------------------
-# MAIN EXECUTION BLOCK (No change needed here)
+# MAIN EXECUTION BLOCK 
 # -------------------------
 
 if __name__ == '__main__':
@@ -86,7 +88,7 @@ if __name__ == '__main__':
     initialize_session_state()
 
     if st.session_state.logged_in:
-        # The functions are called with one argument (go_to)
+        # Pass the go_to function to the dashboard for navigation
         if st.session_state.user_type == "admin":
             admin_dashboard(go_to)
         elif st.session_state.user_type == "candidate":
@@ -96,4 +98,5 @@ if __name__ == '__main__':
         else:
             login_page()
     else:
+        # Fallback to login if not logged in
         login_page()
