@@ -2691,14 +2691,33 @@ def chatbot_tab_content():
 # -------------------------
 
 def candidate_dashboard(go_to): # <-- ADD 'go_to' HERE 
-# Set page config once at the start
+    
+    # 1. Define the Logout Callback Function
+    def logout():
+        # Clear specific session states related to login and redirect to 'login' page
+        st.session_state.logged_in = False
+        st.session_state.user_type = None
+        go_to("login")
+
+    # Set page config once at the start (usually done in the main app file)
     st.set_page_config(layout="wide", page_title="PragyanAI Candidate Dashboard")
     
-    st.title("🧑‍💻 Candidate Dashboard")
+    # --- Dashboard Header and Logout Button ---
+    col_title, col_logout = st.columns([10, 1])
+    
+    with col_title:
+        st.title("🧑‍💻 Candidate Dashboard")
+    
+    with col_logout:
+        # 2. Place the Log Out Button
+        st.button("🚪 Logout", on_click=logout, type="secondary")
             
     st.markdown("---")
 
     # --- Session State Initialization (Revised for new tab and persistence) ---
+    # NOTE: It is best practice to move this to a centralized initialize_session_state() function
+    # that runs only once at the start of the app, but we keep it here as per your request.
+    
     if "parsed" not in st.session_state: st.session_state.parsed = {} 
     if "full_text" not in st.session_state: st.session_state.full_text = ""
     if "excel_data" not in st.session_state: st.session_state.excel_data = None
@@ -2711,8 +2730,7 @@ def candidate_dashboard(go_to): # <-- ADD 'go_to' HERE
     if 'filtered_jds_display' not in st.session_state: st.session_state.filtered_jds_display = []
     if 'last_selected_skills' not in st.session_state: st.session_state.last_selected_skills = []
     if 'generated_cover_letter' not in st.session_state: st.session_state.generated_cover_letter = "" 
-    if 'cl_jd_name' not in st.session_state: st.session_state.cl_jd_name = "" 
-    
+    if 'cl_jd_name' not in st.session_state: st.session_state.cl_jd_name = ""
     # --- CV MANAGEMENT STATE (NEW) ---
     if 'cv_data' not in st.session_state: 
         st.session_state.cv_data = {
