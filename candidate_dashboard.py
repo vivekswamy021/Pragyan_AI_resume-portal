@@ -1116,18 +1116,22 @@ def resume_parsing_tab():
         
 # --- CV Management Tab Function (NEW) ---
 
+# --- CV Management Tab Function (NEW) ---
+
 def cv_management_tab():
     """Tab to allow form-based CV data entry."""
     st.header("📝 CV Management & Form Generation")
     st.markdown("Generate a resume text structure by filling out the sections below. This text can then be parsed in the 'Resume Parsing' tab.")
     
+    # --- State Initialization ---
     if 'cv_data' not in st.session_state:
         st.session_state.cv_data = {
             'personal_info': {'name': '', 'email': '', 'phone': ''},
             'education': [],
             'experience': [],
             'projects': [],
-            'certifications': []
+            'certifications': [],
+            'strengths_raw': '' # NEW: To hold raw text area input for strengths
         }
     if 'form_cv_text' not in st.session_state:
         st.session_state.form_cv_text = ""
@@ -1171,11 +1175,13 @@ def cv_management_tab():
             
         if st.form_submit_button("Add Education"):
             if degree and university:
-                entry = f"{degree}, {university} ({year_from}-{year_to})"
+                entry = f"Degree: {degree}, Institution: {university} ({year_from}-{year_to})"
                 st.session_state.cv_data['education'].append(entry)
                 st.success(f"Added: {entry}")
             else:
                 st.error("Please enter Degree and University.")
+    st.dataframe(st.session_state.cv_data['education'], use_container_width=True, hide_index=True)
+    st.markdown("---")
 
     # --- 3. Experience ---
     st.subheader("3. Professional Experience")
@@ -1198,11 +1204,15 @@ def cv_management_tab():
             
         if st.form_submit_button("Add Experience"):
             if company and role:
-                entry = f"{role} at {company} (CTC: {ctc}) ({year_from}-{year_to}). Responsibilities: {description.replace('\n', ' | ')}"
+                # Use a clear separator for responsibilities
+                desc_formatted = description.replace('\n', ' | ').strip()
+                entry = f"Role: {role} at {company} (CTC: {ctc}) ({year_from}-{year_to}). Responsibilities: {desc_formatted}"
                 st.session_state.cv_data['experience'].append(entry)
                 st.success(f"Added: {role} at {company}")
             else:
                 st.error("Please enter Company Name and Role.")
+    st.dataframe(st.session_state.cv_data['experience'], use_container_width=True, hide_index=True)
+    st.markdown("---")
 
     # --- 4. Projects ---
     st.subheader("4. Projects")
@@ -1218,11 +1228,14 @@ def cv_management_tab():
             
         if st.form_submit_button("Add Project"):
             if project_name:
-                entry = f"Project: {project_name}. Tools: {tools}. Link: {app_link}. Description: {description.replace('\n', ' | ')}"
+                desc_formatted = description.replace('\n', ' | ').strip()
+                entry = f"Project: {project_name}. Tools: {tools}. Link: {app_link}. Description: {desc_formatted}"
                 st.session_state.cv_data['projects'].append(entry)
                 st.success(f"Added Project: {project_name}")
             else:
                 st.error("Please enter Project Name.")
+    st.dataframe(st.session_state.cv_data['projects'], use_container_width=True, hide_index=True)
+    st.markdown("---")
 
     # --- 5. Certifications ---
     st.subheader("5. Certifications")
@@ -1246,13 +1259,27 @@ def cv_management_tab():
                 st.success(f"Added Certification: {title}")
             else:
                 st.error("Please enter Certificate Title.")
-                
+    st.dataframe(st.session_state.cv_data['certifications'], use_container_width=True, hide_index=True)
     st.markdown("---")
 
-    # --- 6. Generate and Preview Text ---
+    # --- 6. Strengths (NEW SECTION) ---
+    st.subheader("6. Strengths")
+    # Bind text area directly to the 'strengths_raw' session state variable
+    st.session_state.cv_data['strengths_raw'] = st.text_area(
+        "Enter your key strengths (one per line)",
+        value=st.session_state.cv_data['strengths_raw'],
+        key='cv_strengths_input',
+        height=150
+    )
+    st.markdown("---")
+
+    # --- 7. Generate and Preview Text ---
     
     def generate_cv_text():
+        """Generates the final formatted text from all stored session state data."""
         data = st.session_state.cv_data
+        
+        # Start with Personal Info (retrieved from live session state updates)
         text = f"Candidate Resume Data\n\n"
         text += f"Name: {data['personal_info']['name']}\n"
         text += f"Email: {data['personal_info']['email']}\n"
@@ -1274,9 +1301,18 @@ def cv_management_tab():
         if data['certifications']:
             text += "\n".join(data['certifications']) + "\n\n"
             
+        # Add Strengths (processed from raw text input)
+        strengths_list = [s.strip() for s in data.get('strengths_raw', '').split('\n') if s.strip()]
+        text += "--- Strengths ---\n"
+        if strengths_list:
+            text += "\n".join(strengths_list) + "\n\n"
+            
         return text.strip()
 
     if st.button("Generate CV Text for Parsing", type="primary", use_container_width=True):
+        # The fix to make the generation work is ensuring all inputs (including the new one) 
+        # are correctly bound to session state, which we have done. 
+        # This button click simply executes the function and updates the state variable.
         st.session_state.form_cv_text = generate_cv_text()
         st.info("CV Text Generated. Go to **Resume Parsing** tab and select 'Use Form Data'.")
         
@@ -1298,11 +1334,12 @@ def cv_management_tab():
             'education': [],
             'experience': [],
             'projects': [],
-            'certifications': []
+            'certifications': [],
+            'strengths_raw': '' # Reset the new field
         }
         st.session_state.form_cv_text = ""
         st.success("All CV form data cleared.")
-        st.rerun()
+        st.rerun() # Rerun to clear input widgets immediately
 
 # --- JD Management Tab Function ---
         
