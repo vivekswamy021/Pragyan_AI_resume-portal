@@ -8,13 +8,19 @@ def hiring_dashboard(go_to_func):
     st.title("👨‍💼 Hiring Manager Dashboard (Placeholder)")
     st.caption("Manage JDs, review top candidates, and track interviews.")
     
-    col_header, col_logout = st.columns([4, 1])
-    with col_logout:
+      with nav_col:
         if st.button("🚪 Log Out", use_container_width=True):
-            go_to_func("login")
+            # 1. Clear authentication state
+            st.session_state.logged_in = False
+            st.session_state.user_type = None
+            
+            # 2. Set the target page
+            go_to("login")
+            
+            # 3. Force the application to re-run (CRITICAL step)
             st.rerun() 
             
-    st.markdown("---")
+    st.markdown("---") # Visual separator after the header/logout
 
     st.header("Candidate Review Pipeline")
     
