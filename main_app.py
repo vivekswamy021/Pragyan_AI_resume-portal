@@ -4,9 +4,6 @@ from admin_dashboard import admin_dashboard
 from candidate_dashboard import candidate_dashboard
 from hiring_dashboard import hiring_dashboard
 
-image_url = "https://github.com/vivekswamy021/Pragyan_AI_resume/blob/cba81f5602899e5983b3f760306e3a8dc34e4cc9/pragyan_ai_school_cover.jpg"
-st.image(image_url) 
-
 # --- Utility Functions for Navigation and State Management ---
 
 def go_to(page_name):
@@ -68,7 +65,9 @@ def initialize_session_state():
     
 def login_page():
     """Handles the user login and redirects to the appropriate dashboard based on the selected role."""
-    
+
+    image_url = "https://github.com/vivekswamy021/Pragyan_AI_resume/blob/cba81f5602899e5983b3f760306e3a8dc34e4cc9/pragyan_ai_school_cover.jpg"
+    st.image(image_url) 
     # --- Custom Header (Mimicking the image's branding) ---
     st.markdown(
         """
