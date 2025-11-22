@@ -62,12 +62,13 @@ def initialize_session_state():
 
     # Hiring Manager Data (Placeholder)
     if 'hiring_jds' not in st.session_state: st.session_state.hiring_jds = []
-    
+        
 def login_page():
     """Handles the user login and redirects to the appropriate dashboard based on the selected role."""
 
-    image_url = "https://github.com/vivekswamy021/Pragyan_AI_resume/blob/cba81f5602899e5983b3f760306e3a8dc34e4cc9/pragyan_ai_school_cover.jpg"
-    st.image(image_url) 
+    # ---- Add image here ----
+    st.image("https://raw.githubusercontent.com/<username>/<repo>/main/images/logo.png", width=120)
+
     # --- Custom Header (Mimicking the image's branding) ---
     st.markdown(
         """
