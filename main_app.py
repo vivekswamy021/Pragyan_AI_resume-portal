@@ -7,7 +7,8 @@ from hiring_dashboard import hiring_dashboard
 # --------------------------------------------------
 # 🔥 SET YOUR LOGO HERE (GitHub RAW IMAGE LINK)
 # --------------------------------------------------
-LOGO_URL = "https://raw.githubusercontent.com/vivekswamy021/Pragyan_AI_resume/blob/main/pragyan_ai_school_cover.jpg"
+https://raw.githubusercontent.com/vivekswamy021/Pragyan_AI_resume/main/pragyan_ai_school_cover.jpg
+"
 
 
 # --------------------------------------------------
