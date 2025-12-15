@@ -833,139 +833,228 @@ def generate_gap_course_plan(gap_analysis_text, jd_role, candidate_skills):
 # --- ADAPTED LLM Functions for Interview Preparation (Modified) ---
 
 def generate_interview_questions(source_data, source_type, identifier):
+
     """
+
     Generates interview questions based on either a resume section or a full JD.
+
     source_type can be 'resume' (source_data is parsed_json) or 'jd' (source_data is jd_content string).
+
     identifier is the section name (e.g., 'Skills') or JD name.
+
     """
+
     global client, GROQ_MODEL
-    
     if source_type == 'resume':
+
         target_section_display = identifier
+
         target_section_key = identifier.lower().replace(' ', '_')
+
         resume_content = source_data.get(target_section_key, "Content not found in this section.")
-        
+
         # Ensure resume_content is a string
+
         if isinstance(resume_content, list):
+
             content_str = "\n".join([str(item) for item in resume_content])
+
         else:
+
             content_str = str(resume_content)
+
         
+
         if "Content not found" in content_str or not content_str.strip():
+
             return f"Error: Content for resume section '{target_section_display}' is empty or invalid."
+
             
+
         context_block = f"""
+
     --- Candidate Resume Content for Section: {target_section_display} ---
+
     {content_str}
-    
     Generate a list of interview questions specifically targeting the **{target_section_display}** section of the candidate's resume.
+
     """
-        
     elif source_type == 'jd':
+
         jd_content = identifier
-        
+
         if not jd_content.strip():
+
             return "Error: Job Description content is empty."
+
             
+
         context_block = f"""
+
     --- Job Description (JD) Content for Role: {source_data} ---
+
     {jd_content}
-    
     Generate a list of interview questions specifically targeting the **JD** requirements and the stated role, to assess candidate fit.
+
     """
-        
     else:
+
         return "Error: Invalid question source type."
 
-
     prompt = f"""
+
     You are an expert technical interviewer. Based ONLY on the following information, 
+
     generate a list of interview questions.
+
     
+
     **Instructions:**
+
     1. Generate 5-7 questions across **3 difficulty levels**: [Basic/Screening], [Intermediate/Technical], and [Advanced/Behavioral].
+
     2. The output must be a raw string. Start a new line for each question.
+
     3. Use the following strict format for your output:
+
     [Level Name]
+
     Q1: Question text...
+
     Q2: Question text...
+
     ...
-    
     {context_block}
     
     ---
-    Output:
-    """
 
+    Output:
+
+    """
     try:
+
         if isinstance(client, MockGroqClient) or not GROQ_API_KEY:
+
              response = client.chat().create(model=GROQ_MODEL, messages=[{"role": "user", "content": prompt}])
+
         else:
+
             response = client.chat.completions.create(
+
                 model=GROQ_MODEL,
+
                 messages=[{"role": "user", "content": prompt}],
+
                 temperature=0.8
+
             )
+
         return response.choices[0].message.content.strip()
-            
+
     except Exception as e:
+
         error_msg = f"AI Question Generation Error: {e}\nTrace: {traceback.format_exc()}"
+
         st.error(error_msg)
+
         return f"Error generating questions: {error_msg}"
 
-
 def evaluate_interview_answers(qa_list, resume_context):
+
     """
+
     Evaluates a list of candidate's recorded answers based on the questions and resume context.
+
     The output is a full markdown report.
+
     """
+
     global client, GROQ_MODEL
+
     
+
     # Format Q&A for LLM
+
     qa_exchange = "\n\n--- Candidate Answers ---\n\n"
+
     for i, item in enumerate(qa_list):
+
         # Ensure question and answer are strings
+
         question = str(item['question'].replace(f"({item['level']})", '').strip())
+
         answer = str(item['answer'])
+
         qa_exchange += f"Q{i+1} ({item['level']}): {question}\n"
+
         qa_exchange += f"Answer {i+1}: {answer}\n"
+
         qa_exchange += "---"
 
+
+
     prompt = f"""
+
     You are an expert interviewer evaluating a candidate's recorded answers.
+
     
+
     **Evaluation Task:**
+
     Evaluate the candidate's answers based on the provided questions and their resume/JD context.
+
     
+
     **Instructions for Report:**
+
     1.  Provide an **Overall Score (X/10)** at the beginning of the report.
+
     2.  Give a **Summary** of the candidate's performance (e.g., strength in technical depth, weakness in behavioral structure).
+
     3.  For **each question** answered, provide specific, actionable, constructive feedback. Use markdown headings (e.g., **Q1 Feedback**).
+
     4.  Ensure the report is professional and directly addresses consistency with the context.
+
     
+
     --- Context Used for Interview ---
+
     {resume_context}
+
     
+
     --- Interview Exchange ---
+
     {qa_exchange}
-    
     ---
+
     **Output the evaluation report clearly using markdown.**
+
     """
-
     try:
-        if isinstance(client, MockGroqClient) or not GROQ_API_KEY:
-             response = client.chat().create(model=GROQ_MODEL, messages=[{"role": "user", "content": prompt}])
-        else:
-            response = client.chat.completions.create(
-                model=GROQ_MODEL,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.5
-            )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        return f"Evaluation Error: Failed to connect to LLM for scoring. Error: {e}"
 
+        if isinstance(client, MockGroqClient) or not GROQ_API_KEY:
+
+             response = client.chat().create(model=GROQ_MODEL, messages=[{"role": "user", "content": prompt}])
+
+        else:
+
+            response = client.chat.completions.create(
+
+                model=GROQ_MODEL,
+
+                messages=[{"role": "user", "content": prompt}],
+
+                temperature=0.5
+
+            )
+
+        return response.choices[0].message.content.strip()
+
+    except Exception as e:
+
+        return f"Evaluation Error: Failed to connect to LLM for scoring. Error: {e}"
+        
 # --- END ADAPTED LLM Functions ---
 
 # --- Tab Content Functions ---
