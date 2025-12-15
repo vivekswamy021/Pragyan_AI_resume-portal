@@ -30,17 +30,18 @@ def initialize_session_state():
 
     if 'logged_in' not in st.session_state: st.session_state.logged_in = False
     if 'user_type' not in st.session_state: st.session_state.user_type = None
-    if 'user_email' not in st.session_state: st.session_state.user_email = "" # Store email
+    if 'user_email' not in st.session_state: st.session_state.user_email = "" 
+    if 'user_name' not in st.session_state: st.session_state.user_name = "" # Store Name
 
     # --------------------------------------------------
-    # 👤 USER PROFILE DATA (New Feature)
+    # 👤 USER PROFILE DATA
     # --------------------------------------------------
     if 'user_profile' not in st.session_state:
         st.session_state.user_profile = {
-            "profile_pic": None,       # Stores the uploaded image object
+            "profile_pic": None,
             "github_link": "",
             "linkedin_link": "",
-            "password": "password123"  # Simulated current password
+            "password": "password123"
         }
 
     # Admin Data
@@ -89,20 +90,20 @@ def initialize_session_state():
 # --------------------------------------------------
 def render_profile_sidebar():
     with st.sidebar:
-        st.header("👤 User Profile")
+        # 🔥 Dynamic Header with User Name
+        st.header(f"👤 {st.session_state.user_name}")
+        st.caption(f"Role: {st.session_state.user_type.capitalize()}")
         
+        st.divider()
+
         # 1. Profile Picture
         col_pic, col_upload = st.columns([1, 2])
-        
-        # Display current picture or default placeholder
         if st.session_state.user_profile["profile_pic"]:
-            st.image(st.session_state.user_profile["profile_pic"], caption="Your Profile", width=100)
+            st.image(st.session_state.user_profile["profile_pic"], width=100)
         else:
-            # Simple placeholder emoji or default text if no image
             st.markdown("## 👤")
             st.caption("No image")
 
-        # Upload new picture
         uploaded_pic = st.file_uploader("Update Photo", type=["jpg", "png", "jpeg"])
         if uploaded_pic is not None:
             st.session_state.user_profile["profile_pic"] = uploaded_pic
@@ -111,11 +112,14 @@ def render_profile_sidebar():
 
         st.divider()
 
-        # 2. Basic Info (Read-only for context)
-        st.markdown(f"**Role:** {st.session_state.user_type.capitalize()}")
-        st.markdown(f"**Email:** {st.session_state.user_email}")
-
-        st.divider()
+        # 2. Edit Name Section
+        with st.expander("✏️ Edit Profile Details"):
+            # Allow user to update the name extracted from email
+            new_name = st.text_input("Display Name", value=st.session_state.user_name)
+            if st.button("Update Name"):
+                st.session_state.user_name = new_name
+                st.success("Name updated!")
+                st.rerun()
 
         # 3. Professional Links
         st.subheader("🔗 Professional Links")
@@ -153,6 +157,7 @@ def render_profile_sidebar():
         if st.button("Logout", type="primary"):
             st.session_state.logged_in = False
             st.session_state.user_type = None
+            st.session_state.user_name = "" # Clear name on logout
             st.session_state.page = "login"
             st.rerun()
 
@@ -182,7 +187,6 @@ def login_page():
         
         with st.form("login_form", clear_on_submit=True):
 
-            # Role
             st.markdown("Select Your Role")
             role = st.selectbox(
                 "Select Role",
@@ -190,11 +194,9 @@ def login_page():
                 label_visibility="collapsed"
             )
 
-            # Email
             st.markdown("Email")
             email = st.text_input("Email", placeholder="Enter email", label_visibility="collapsed")
 
-            # Password
             st.markdown("Password")
             password = st.text_input("Password", type="password", placeholder="Enter password", label_visibility="collapsed")
 
@@ -212,9 +214,15 @@ def login_page():
                         "Hiring Manager": "hiring"
                     }.get(role)
 
+                    # 🔥 Extract Name from Email (Simple Logic)
+                    # e.g. "vivek@gmail.com" -> "Vivek"
+                    extracted_name = email.split("@")[0].capitalize()
+
                     st.session_state.logged_in = True
                     st.session_state.user_type = user_role
-                    st.session_state.user_email = email # Save email for profile
+                    st.session_state.user_email = email
+                    st.session_state.user_name = extracted_name # Set the name!
+                    
                     go_to(f"{user_role}_dashboard")
                     st.rerun()
 
@@ -241,6 +249,10 @@ def signup_page():
     with col2:
         with st.form("signup_form"):
 
+            # Added Name field to signup for realism
+            st.markdown("Full Name")
+            full_name = st.text_input("Full Name", placeholder="Enter full name", label_visibility="collapsed")
+
             st.markdown("Email")
             email = st.text_input("Email", placeholder="Enter email", label_visibility="collapsed")
 
@@ -258,7 +270,7 @@ def signup_page():
                 elif password != confirm_password:
                     st.error("Passwords do not match.")
                 else:
-                    st.success("Account created! Please log in.")
+                    st.success(f"Account created for {full_name or email}! Please log in.")
                     go_to("login")
                     st.rerun()
 
@@ -280,7 +292,7 @@ if __name__ == '__main__':
 
     if st.session_state.logged_in:
         
-        # 🔥 RENDER SIDEBAR FOR ALL LOGGED IN USERS
+        # 🔥 RENDER SIDEBAR with Name
         render_profile_sidebar()
 
         if st.session_state.user_type == "admin":
