@@ -92,7 +92,7 @@ def render_profile_sidebar():
     with st.sidebar:
         # Dynamic Header with User Name
         st.header(f"👤 {st.session_state.user_name}")
-        st.caption(f"Role: {st.session_state.user_type.capitalize()}")
+        st.caption(f"Role: {st.session_state.user_type.capitalize()} | Email: {st.session_state.user_email}")
         
         st.divider()
 
@@ -112,14 +112,15 @@ def render_profile_sidebar():
 
         st.divider()
 
-        # 2. Edit Name Section
-        with st.expander("✏️ Edit Profile Details"):
-            # Allow user to update the name extracted from email
-            new_name = st.text_input("Display Name", value=st.session_state.user_name)
-            if st.button("Update Name"):
-                st.session_state.user_name = new_name
-                st.success("Name updated!")
-                st.rerun()
+        # 2. Edit Name Section (Direct Input)
+        st.subheader("✏️ Profile Name")
+        new_name = st.text_input("Display Name", value=st.session_state.user_name, label_visibility="collapsed")
+        if st.button("Update Name"):
+            st.session_state.user_name = new_name
+            st.success("Name updated!")
+            st.rerun()
+
+        st.divider()
 
         # 3. Professional Links
         st.subheader("🔗 Professional Links")
@@ -159,7 +160,6 @@ def render_profile_sidebar():
             st.session_state.user_type = None
             st.session_state.user_email = "" 
             st.session_state.user_name = "" 
-            # 🔥 Clear the uploaded photo/profile picture
             st.session_state.user_profile["profile_pic"] = None
             st.session_state.page = "login"
             st.rerun()
