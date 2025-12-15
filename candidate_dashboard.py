@@ -289,29 +289,24 @@ except (ImportError, ValueError, NameError) as e:
     
 # --- END API SETUP ---
 
+
 # --- Utility Functions ---
+
 def clear_interview_state(mode):
-
     """Clears all session state variables related to interview preparation for a specific mode."""
-
     if mode == 'resume':
-
         if 'iq_output_resume' in st.session_state: del st.session_state['iq_output_resume']
-
         if 'interview_qa_resume' in st.session_state: del st.session_state['interview_qa_resume']
-
         if 'evaluation_report_resume' in st.session_state: del st.session_state['evaluation_report_resume']
-
     elif mode == 'jd':
-
         if 'iq_output_jd' in st.session_state: del st.session_state['iq_output_jd']
         if 'interview_qa_jd' in st.session_state: del st.session_state['interview_qa_jd']
         if 'evaluation_report_jd' in st.session_state: del st.session_state['evaluation_report_jd']
-            
+    
     # Also clear the gap analysis plan when interview state is cleared (as it's derived from the match)
-
     if 'gap_analysis_plan' in st.session_state: del st.session_state['gap_analysis_plan']
-        
+
+
 def get_file_type(file_name):
     """Identifies the file type based on its extension, handling common text formats."""
     ext = os.path.splitext(file_name)[1].lower().strip('.')
@@ -833,228 +828,139 @@ def generate_gap_course_plan(gap_analysis_text, jd_role, candidate_skills):
 # --- ADAPTED LLM Functions for Interview Preparation (Modified) ---
 
 def generate_interview_questions(source_data, source_type, identifier):
-
     """
-
     Generates interview questions based on either a resume section or a full JD.
-
     source_type can be 'resume' (source_data is parsed_json) or 'jd' (source_data is jd_content string).
-
     identifier is the section name (e.g., 'Skills') or JD name.
-
     """
-
     global client, GROQ_MODEL
+    
     if source_type == 'resume':
-
         target_section_display = identifier
-
         target_section_key = identifier.lower().replace(' ', '_')
-
         resume_content = source_data.get(target_section_key, "Content not found in this section.")
-
-        # Ensure resume_content is a string
-
-        if isinstance(resume_content, list):
-
-            content_str = "\n".join([str(item) for item in resume_content])
-
-        else:
-
-            content_str = str(resume_content)
-
         
-
+        # Ensure resume_content is a string
+        if isinstance(resume_content, list):
+            content_str = "\n".join([str(item) for item in resume_content])
+        else:
+            content_str = str(resume_content)
+        
         if "Content not found" in content_str or not content_str.strip():
-
             return f"Error: Content for resume section '{target_section_display}' is empty or invalid."
-
             
-
         context_block = f"""
-
     --- Candidate Resume Content for Section: {target_section_display} ---
-
     {content_str}
+    
     Generate a list of interview questions specifically targeting the **{target_section_display}** section of the candidate's resume.
-
     """
+        
     elif source_type == 'jd':
-
         jd_content = identifier
-
+        
         if not jd_content.strip():
-
             return "Error: Job Description content is empty."
-
             
-
         context_block = f"""
-
     --- Job Description (JD) Content for Role: {source_data} ---
-
     {jd_content}
+    
     Generate a list of interview questions specifically targeting the **JD** requirements and the stated role, to assess candidate fit.
-
     """
+        
     else:
-
         return "Error: Invalid question source type."
 
+
     prompt = f"""
-
     You are an expert technical interviewer. Based ONLY on the following information, 
-
     generate a list of interview questions.
-
     
-
     **Instructions:**
-
     1. Generate 5-7 questions across **3 difficulty levels**: [Basic/Screening], [Intermediate/Technical], and [Advanced/Behavioral].
-
     2. The output must be a raw string. Start a new line for each question.
-
     3. Use the following strict format for your output:
-
     [Level Name]
-
     Q1: Question text...
-
     Q2: Question text...
-
     ...
+    
     {context_block}
     
     ---
-
     Output:
-
     """
+
     try:
-
         if isinstance(client, MockGroqClient) or not GROQ_API_KEY:
-
              response = client.chat().create(model=GROQ_MODEL, messages=[{"role": "user", "content": prompt}])
-
         else:
-
             response = client.chat.completions.create(
-
                 model=GROQ_MODEL,
-
                 messages=[{"role": "user", "content": prompt}],
-
                 temperature=0.8
-
             )
-
         return response.choices[0].message.content.strip()
-
+            
     except Exception as e:
-
         error_msg = f"AI Question Generation Error: {e}\nTrace: {traceback.format_exc()}"
-
         st.error(error_msg)
-
         return f"Error generating questions: {error_msg}"
 
+
 def evaluate_interview_answers(qa_list, resume_context):
-
     """
-
     Evaluates a list of candidate's recorded answers based on the questions and resume context.
-
     The output is a full markdown report.
-
     """
-
     global client, GROQ_MODEL
-
     
-
     # Format Q&A for LLM
-
     qa_exchange = "\n\n--- Candidate Answers ---\n\n"
-
     for i, item in enumerate(qa_list):
-
         # Ensure question and answer are strings
-
         question = str(item['question'].replace(f"({item['level']})", '').strip())
-
         answer = str(item['answer'])
-
         qa_exchange += f"Q{i+1} ({item['level']}): {question}\n"
-
         qa_exchange += f"Answer {i+1}: {answer}\n"
-
         qa_exchange += "---"
 
-
-
     prompt = f"""
-
     You are an expert interviewer evaluating a candidate's recorded answers.
-
     
-
     **Evaluation Task:**
-
     Evaluate the candidate's answers based on the provided questions and their resume/JD context.
-
     
-
     **Instructions for Report:**
-
     1.  Provide an **Overall Score (X/10)** at the beginning of the report.
-
     2.  Give a **Summary** of the candidate's performance (e.g., strength in technical depth, weakness in behavioral structure).
-
     3.  For **each question** answered, provide specific, actionable, constructive feedback. Use markdown headings (e.g., **Q1 Feedback**).
-
     4.  Ensure the report is professional and directly addresses consistency with the context.
-
     
-
     --- Context Used for Interview ---
-
     {resume_context}
-
     
-
     --- Interview Exchange ---
-
     {qa_exchange}
+    
     ---
-
     **Output the evaluation report clearly using markdown.**
-
     """
+
     try:
-
         if isinstance(client, MockGroqClient) or not GROQ_API_KEY:
-
              response = client.chat().create(model=GROQ_MODEL, messages=[{"role": "user", "content": prompt}])
-
         else:
-
             response = client.chat.completions.create(
-
                 model=GROQ_MODEL,
-
                 messages=[{"role": "user", "content": prompt}],
-
                 temperature=0.5
-
             )
-
         return response.choices[0].message.content.strip()
-
     except Exception as e:
-
         return f"Evaluation Error: Failed to connect to LLM for scoring. Error: {e}"
-        
+
 # --- END ADAPTED LLM Functions ---
 
 # --- Tab Content Functions ---
@@ -1207,321 +1113,197 @@ def resume_parsing_tab():
                     st.session_state.excel_data = result['excel_data'] 
             
     st.markdown("---")
-# ----------next tab cv management-----------------------------------        
-def convert_to_json(data):
-    """Converts the structured CV data dictionary into a formatted JSON string."""
-    # Ensure strengths are converted to a list for cleaner JSON
-    json_export = {
-        "personal_info": data.get('personal_info', {}),
-        "education": data.get('education', []),
-        "experience": data.get('experience', []),
-        "projects": data.get('projects', []),
-        "certifications": data.get('certifications', []),
-        # Convert strengths raw text to a list
-        "strengths": [s.strip() for s in data.get('strengths_raw', '').split('\n') if s.strip()]
-    }
-    return json.dumps(json_export, indent=4)
-
-def convert_to_html_content(data):
-    """Generates a basic HTML structure for viewing/downloading as a file."""
-    # Note: This is a simple HTML structure. Full PDF generation requires external libraries (e.g., ReportLab)
-    # or an external service, which is beyond Streamlit's native capabilities. We provide HTML as requested.
-    
-    html = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Candidate Resume</title>
-        <style>
-            body { font-family: Arial, sans-serif; margin: 40px; }
-            h1, h2 { color: #2E86C1; }
-            ul { list-style-type: disc; margin-left: 20px; }
-            .section-divider { border-bottom: 1px solid #ddd; margin-bottom: 15px; }
-        </style>
-    </head>
-    <body>
-    """
-    
-    # Personal Info
-    html += f"<h1>{data['personal_info'].get('name', 'N/A')}</h1>"
-    html += f"<p>Email: {data['personal_info'].get('email', 'N/A')} | Phone: {data['personal_info'].get('phone', 'N/A')}</p>"
-    html += "<div class='section-divider'></div>"
-
-    # Education
-    html += "<h2>Education</h2><ul>"
-    for item in data['education']:
-        html += f"<li>{item}</li>"
-    html += "</ul>"
-
-    # Experience
-    html += "<h2>Professional Experience</h2><ul>"
-    for item in data['experience']:
-        # Replace '|' separator (used for bullets) with line breaks in HTML
-        html += f"<li>{item.replace('|', '<br/>')}</li>"
-    html += "</ul>"
-    
-    # Strengths
-    strengths_list = [s.strip() for s in data.get('strengths_raw', '').split('\n') if s.strip()]
-    html += "<h2>Strengths</h2><ul>"
-    for item in strengths_list:
-        html += f"<li>{item}</li>"
-    html += "</ul>"
-
-    # ... Add other sections (Projects, Certifications) similarly ...
-    
-    html += "</body></html>"
-    return html
-    # ---------------------------------------------
+        
 # --- CV Management Tab Function (NEW) ---
+
 def cv_management_tab():
-    """Tab to allow form-based CV data entry and multi-format preview/download."""
+    """Tab to allow form-based CV data entry."""
     st.header("📝 CV Management & Form Generation")
     st.markdown("Generate a resume text structure by filling out the sections below. This text can then be parsed in the 'Resume Parsing' tab.")
     
+    if 'cv_data' not in st.session_state:
+        st.session_state.cv_data = {
+            'personal_info': {'name': '', 'email': '', 'phone': ''},
+            'education': [],
+            'experience': [],
+            'projects': [],
+            'certifications': []
+        }
+    if 'form_cv_text' not in st.session_state:
+        st.session_state.form_cv_text = ""
+
     # --- 1. Personal Info ---
     st.subheader("1. Personal Information")
     col_name, col_email, col_phone = st.columns(3)
-    
-    # 1.1 Name
     with col_name:
         st.session_state.cv_data['personal_info']['name'] = st.text_input(
             "Full Name", 
-            value=st.session_state.cv_data['personal_info'].get('name', ''), 
+            value=st.session_state.cv_data['personal_info']['name'], 
             key='cv_name'
         )
-    # 1.2 Email
     with col_email:
         st.session_state.cv_data['personal_info']['email'] = st.text_input(
             "Email", 
-            value=st.session_state.cv_data['personal_info'].get('email', ''), 
+            value=st.session_state.cv_data['personal_info']['email'], 
             key='cv_email'
         )
-    # 1.3 Phone
     with col_phone:
         st.session_state.cv_data['personal_info']['phone'] = st.text_input(
             "Phone Number", 
-            value=st.session_state.cv_data['personal_info'].get('phone', ''), 
+            value=st.session_state.cv_data['personal_info']['phone'], 
             key='cv_phone'
         )
-        
-    # 1.4 Communication Address (New Field)
-    st.session_state.cv_data['personal_info']['address'] = st.text_input(
-        "Communication Address (Optional)",
-        value=st.session_state.cv_data['personal_info'].get('address', ''),
-        key='cv_address'
-    )
     
     st.markdown("---")
 
     # --- 2. Education ---
     st.subheader("2. Education")
     with st.form("education_form", clear_on_submit=True):
-        col_deg, col_uni, col_fy, col_ty, col_score = st.columns([2, 2, 1, 1, 1])
-        with col_deg: degree = st.text_input("Degree/Qualification", key='edu_degree')
-        with col_uni: university = st.text_input("University/Institution", key='edu_uni')
-        with col_fy: year_from = st.text_input("From Year", key='edu_fy')
-        with col_ty: year_to = st.text_input("To Year", key='edu_ty')
-        # New Field: Academic Scores
-        with col_score: score = st.text_input("Scores (GPA/%)", key='edu_score', help="e.g., 3.8/4.0 or 85%")
-        
+        col_deg, col_uni, col_fy, col_ty = st.columns([2, 2, 1, 1])
+        with col_deg:
+            degree = st.text_input("Degree/Qualification", key='edu_degree')
+        with col_uni:
+            university = st.text_input("University/Institution", key='edu_uni')
+        with col_fy:
+            year_from = st.text_input("From Year", key='edu_fy')
+        with col_ty:
+            year_to = st.text_input("To Year", key='edu_ty')
+            
         if st.form_submit_button("Add Education"):
             if degree and university:
-                score_display = f", Score: {score}" if score else ""
-                entry = f"Degree: {degree}, Institution: {university} ({year_from}-{year_to}){score_display}"
+                entry = f"{degree}, {university} ({year_from}-{year_to})"
                 st.session_state.cv_data['education'].append(entry)
                 st.success(f"Added: {entry}")
-            else: st.error("Please enter Degree and University.")
-    if st.session_state.cv_data['education']:
-        st.dataframe(st.session_state.cv_data['education'], use_container_width=True, hide_index=True)
-    st.markdown("---")
+            else:
+                st.error("Please enter Degree and University.")
 
     # --- 3. Experience ---
     st.subheader("3. Professional Experience")
     with st.form("experience_form", clear_on_submit=True):
         col_comp, col_role, col_ctc = st.columns([2, 2, 1])
-        with col_comp: company = st.text_input("Company Name", key='exp_company')
-        with col_role: role = st.text_input("Role/Title", key='exp_role')
-        with col_ctc: ctc = st.text_input("CTC (Annual)", key='exp_ctc')
+        with col_comp:
+            company = st.text_input("Company Name", key='exp_company')
+        with col_role:
+            role = st.text_input("Role/Title", key='exp_role')
+        with col_ctc:
+            ctc = st.text_input("CTC (Annual)", key='exp_ctc')
+            
         col_fy, col_ty = st.columns(2)
-        with col_fy: year_from = st.text_input("From Year/Date", key='exp_fy')
-        with col_ty: year_to = st.text_input("To Year/Date (or Present)", key='exp_ty')
-        
-        # Separated Description Fields
-        responsibilities = st.text_area("Key Responsibilities (Use bullet points)", key='exp_resp', height=100)
-        achievements = st.text_area("Key Achievements/Metrics", key='exp_achiev', height=100)
-        
+        with col_fy:
+            year_from = st.text_input("From Year/Date", key='exp_fy')
+        with col_ty:
+            year_to = st.text_input("To Year/Date (or Present)", key='exp_ty')
+            
+        description = st.text_area("Responsibilities/Achievements (Use bullet points)", key='exp_desc', height=100)
+            
         if st.form_submit_button("Add Experience"):
             if company and role:
-                resp_formatted = responsibilities.replace('\n', ' | ').strip()
-                achiev_formatted = achievements.replace('\n', ' | ').strip()
-                
-                desc_parts = []
-                if resp_formatted:
-                    desc_parts.append(f"Responsibilities: {resp_formatted}")
-                if achiev_formatted:
-                    desc_parts.append(f"Achievements: {achiev_formatted}")
-                
-                description_text = ". ".join(desc_parts)
-
-                entry = f"Role: {role} at {company} (CTC: {ctc}) ({year_from}-{year_to}). {description_text}"
+                entry = f"{role} at {company} (CTC: {ctc}) ({year_from}-{year_to}). Responsibilities: {description.replace('\n', ' | ')}"
                 st.session_state.cv_data['experience'].append(entry)
                 st.success(f"Added: {role} at {company}")
-            else: st.error("Please enter Company Name and Role.")
-    if st.session_state.cv_data['experience']:
-        st.dataframe(st.session_state.cv_data['experience'], use_container_width=True, hide_index=True)
-    st.markdown("---")
+            else:
+                st.error("Please enter Company Name and Role.")
 
     # --- 4. Projects ---
     st.subheader("4. Projects")
     with st.form("projects_form", clear_on_submit=True):
         col_name, col_link = st.columns(2)
-        with col_name: project_name = st.text_input("Project Name", key='proj_name')
-        with col_link: app_link = st.text_input("App/Repo Link", key='proj_link')
+        with col_name:
+            project_name = st.text_input("Project Name", key='proj_name')
+        with col_link:
+            app_link = st.text_input("App/Repo Link", key='proj_link')
+            
         tools = st.text_input("Tools Used (Comma Separated)", key='proj_tools')
         description = st.text_area("Description and Accomplishments", key='proj_desc', height=100)
+            
         if st.form_submit_button("Add Project"):
             if project_name:
-                desc_formatted = description.replace('\n', ' | ').strip()
-                entry = f"Project: {project_name}. Tools: {tools}. Link: {app_link}. Description: {desc_formatted}"
+                entry = f"Project: {project_name}. Tools: {tools}. Link: {app_link}. Description: {description.replace('\n', ' | ')}"
                 st.session_state.cv_data['projects'].append(entry)
                 st.success(f"Added Project: {project_name}")
-            else: st.error("Please enter Project Name.")
-    if st.session_state.cv_data['projects']:
-        st.dataframe(st.session_state.cv_data['projects'], use_container_width=True, hide_index=True)
-    st.markdown("---")
+            else:
+                st.error("Please enter Project Name.")
 
     # --- 5. Certifications ---
     st.subheader("5. Certifications")
     with st.form("cert_form", clear_on_submit=True):
         col_title, col_by = st.columns(2)
-        with col_title: title = st.text_input("Certificate Title", key='cert_title')
-        with col_by: given_by = st.text_input("Given By (Issuing Body)", key='cert_given_by')
+        with col_title:
+            title = st.text_input("Certificate Title", key='cert_title')
+        with col_by:
+            given_by = st.text_input("Given By (Issuing Body)", key='cert_given_by')
+            
         col_rec, col_date = st.columns(2)
-        with col_rec: received_by = st.text_input("Received By (Your Name)", key='cert_received_by')
-        with col_date: date = st.text_input("Date Received (YYYY-MM-DD)", key='cert_date')
+        with col_rec:
+            received_by = st.text_input("Received By (Your Name)", key='cert_received_by')
+        with col_date:
+            date = st.text_input("Date Received (YYYY-MM-DD)", key='cert_date')
+            
         if st.form_submit_button("Add Certification"):
             if title:
                 entry = f"Certification: {title} from {given_by}. Received by {received_by} on {date}."
                 st.session_state.cv_data['certifications'].append(entry)
                 st.success(f"Added Certification: {title}")
-            else: st.error("Please enter Certificate Title.")
-    if st.session_state.cv_data['certifications']:
-        st.dataframe(st.session_state.cv_data['certifications'], use_container_width=True, hide_index=True)
+            else:
+                st.error("Please enter Certificate Title.")
+                
     st.markdown("---")
 
-    # --- 6. Key Responsibilities, Expertise, or Leadership Skills (Renamed) ---
-    st.subheader("6. Key Responsibilities, Expertise, or Leadership Skills")
-    st.session_state.cv_data['strengths_raw'] = st.text_area(
-        "Enter relevant expertise, core competencies, or soft/leadership skills (one per line)",
-        value=st.session_state.cv_data.get('strengths_raw', ''),
-        key='cv_strengths_input',
-        height=150
-    )
-    st.markdown("---")
-
-    # --- 7. Generate and Preview Text ---
+    # --- 6. Generate and Preview Text ---
     
     def generate_cv_text():
-        """Generates the text/markdown format from all stored session state data."""
         data = st.session_state.cv_data
-        text = f"# Candidate Resume Data\n\n"
+        text = f"Candidate Resume Data\n\n"
+        text += f"Name: {data['personal_info']['name']}\n"
+        text += f"Email: {data['personal_info']['email']}\n"
+        text += f"Phone: {data['personal_info']['phone']}\n\n"
         
-        # Personal Info
-        text += f"**Name**: {data['personal_info'].get('name', '')}\n"
-        text += f"**Email**: {data['personal_info'].get('email', '')}\n"
-        text += f"**Phone**: {data['personal_info'].get('phone', '')}\n"
-        if data['personal_info'].get('address'):
-            text += f"**Address**: {data['personal_info']['address']}\n"
-        text += "\n"
+        text += "--- Education ---\n"
+        if data['education']:
+            text += "\n".join(data['education']) + "\n\n"
         
-        # Education
-        text += "## Education\n"
-        if data['education']: text += "* " + "\n* ".join(data['education']) + "\n\n"
-        
-        # Experience
-        text += "## Experience\n"
-        if data['experience']: text += "* " + "\n* ".join(data['experience']) + "\n\n"
+        text += "--- Experience ---\n"
+        if data['experience']:
+            text += "\n".join(data['experience']) + "\n\n"
             
-        # Projects
-        text += "## Projects\n"
-        if data['projects']: text += "* " + "\n* ".join(data['projects']) + "\n\n"
+        text += "--- Projects ---\n"
+        if data['projects']:
+            text += "\n".join(data['projects']) + "\n\n"
             
-        # Certifications
-        text += "## Certifications\n"
-        if data['certifications']: text += "* " + "\n* ".join(data['certifications']) + "\n\n"
-            
-        # Strengths/Skills (Renamed Section)
-        strengths_raw_data = data.get('strengths_raw', '')
-        if strengths_raw_data:
-            strengths_list = [s.strip() for s in strengths_raw_data.split('\n') if s.strip()]
-            if strengths_list:
-                text += "## Key Responsibilities, Expertise, or Leadership Skills\n"
-                text += "* " + "\n* ".join(strengths_list) + "\n\n"
+        text += "--- Certifications ---\n"
+        if data['certifications']:
+            text += "\n".join(data['certifications']) + "\n\n"
             
         return text.strip()
 
-    if st.button("Generate CV Data for Parsing & Preview", type="primary", use_container_width=True):
+    if st.button("Generate CV Text for Parsing", type="primary", use_container_width=True):
         st.session_state.form_cv_text = generate_cv_text()
-        st.info("CV Data Generated. Go to **Resume Parsing** tab and select 'Use Form Data'.")
+        st.info("CV Text Generated. Go to **Resume Parsing** tab and select 'Use Form Data'.")
         
-    st.markdown("##### Current Generated Data Preview")
-    
+    st.markdown("##### Current Generated Text Preview")
     if st.session_state.form_cv_text:
-        
-        # Generate content for all formats
-        markdown_text = st.session_state.form_cv_text
-        # These functions MUST exist in your application code!
-        json_data = convert_to_json(st.session_state.cv_data) 
-        html_content = convert_to_html_content(st.session_state.cv_data)
-
-        # Create Tabs for viewing
-        tab_md, tab_json, tab_html_pdf = st.tabs(["Markdown (.md)", "JSON (.json)", "HTML/PDF Preview"])
-
-        with tab_md:
-            st.code(markdown_text, language='markdown')
-            st.download_button(
-                label="⬇️ Download Markdown (.md)",
-                data=markdown_text,
-                file_name=f"{st.session_state.cv_data['personal_info']['name'].replace(' ', '_')}_cv.md",
-                mime="text/markdown",
-                use_container_width=True
-            )
-
-        with tab_json:
-            st.json(json_data)
-            st.download_button(
-                label="⬇️ Download JSON (.json)",
-                data=json_data,
-                file_name=f"{st.session_state.cv_data['personal_info']['name'].replace(' ', '_')}_cv.json",
-                mime="application/json",
-                use_container_width=True
-            )
-
-        with tab_html_pdf:
-            st.components.v1.html(html_content, height=400, scrolling=True)
-            st.download_button(
-                label="⬇️ Download HTML (.html)",
-                data=html_content,
-                file_name=f"{st.session_state.cv_data['personal_info']['name'].replace(' ', '_')}_cv.html",
-                mime="text/html",
-                use_container_width=True
-            )
-
+        st.text_area(
+            "Generated CV Text",
+            value=st.session_state.form_cv_text,
+            height=300,
+            disabled=True,
+            key='cv_text_preview'
+        )
     else:
         st.info("No CV text generated yet. Fill out the forms and click the generate button.")
 
     if st.button("🗑️ Clear All Form Data", key="clear_cv_form_data"):
         st.session_state.cv_data = {
-            'personal_info': {'name': '', 'email': '', 'phone': '', 'address': ''}, # Added 'address'
+            'personal_info': {'name': '', 'email': '', 'phone': ''},
             'education': [],
             'experience': [],
             'projects': [],
-            'certifications': [],
-            'strengths_raw': '' 
+            'certifications': []
         }
         st.session_state.form_cv_text = ""
+        st.success("All CV form data cleared.")
         st.rerun()
-        
+
 # --- JD Management Tab Function ---
         
 def jd_management_tab_candidate():
@@ -2368,166 +2150,167 @@ def display_evaluation_form(mode, qa_data_list, context_for_eval):
             st.rerun()
 
 def interview_preparation_tab():
-    """
-    Interview Preparation Tab Logic with two sub-tabs: Resume Based and JD Based.
-    """
-    st.header("🎤 Interview Preparation Tools")
+    """
+    Interview Preparation Tab Logic with two sub-tabs: Resume Based and JD Based.
+    """
+    st.header("🎤 Interview Preparation Tools")
 
-    # Determine if a resume/CV is ready
-    is_resume_parsed = (
-        st.session_state.get('parsed') is not None and
-        st.session_state.parsed.get('name') is not None and
-        st.session_state.parsed.get('error') is None
-    )
-    
-    is_jd_loaded = bool(st.session_state.get('candidate_jd_list'))
+    # Determine if a resume/CV is ready
+    is_resume_parsed = (
+        st.session_state.get('parsed') is not None and
+        st.session_state.parsed.get('name') is not None and
+        st.session_state.parsed.get('error') is None
+    )
+    
+    is_jd_loaded = bool(st.session_state.get('candidate_jd_list'))
 
-    # Check if we are running in Mock Mode
-    is_mock_mode = isinstance(client, MockGroqClient) and not GROQ_API_KEY
-    
-    if not GROQ_API_KEY and not is_mock_mode:
-        st.error("Cannot use Interview Prep: GROQ_API_KEY is not configured.")
-        return
+    # Check if we are running in Mock Mode
+    is_mock_mode = isinstance(client, MockGroqClient) and not GROQ_API_KEY
+    
+    if not GROQ_API_KEY and not is_mock_mode:
+        st.error("Cannot use Interview Prep: GROQ_API_KEY is not configured.")
+        return
 
-    # Initialize Interview Prep States for both modes and the mode tracker
-    if 'iq_mode' not in st.session_state: st.session_state.iq_mode = 'resume' 
-    if 'iq_output_resume' not in st.session_state: st.session_state.iq_output_resume = ""
-    if 'interview_qa_resume' not in st.session_state: st.session_state.interview_qa_resume = [] 
-    if 'evaluation_report_resume' not in st.session_state: st.session_state.evaluation_report_resume = "" 
-    
-    if 'iq_output_jd' not in st.session_state: st.session_state.iq_output_jd = ""
-    if 'interview_qa_jd' not in st.session_state: st.session_state.interview_qa_jd = [] 
-    if 'evaluation_report_jd' not in st.session_state: st.session_state.evaluation_report_jd = "" 
-    
-    st.markdown("---")
+    # Initialize Interview Prep States for both modes and the mode tracker
+    if 'iq_mode' not in st.session_state: st.session_state.iq_mode = 'resume' 
+    if 'iq_output_resume' not in st.session_state: st.session_state.iq_output_resume = ""
+    if 'interview_qa_resume' not in st.session_state: st.session_state.interview_qa_resume = [] 
+    if 'evaluation_report_resume' not in st.session_state: st.session_state.evaluation_report_resume = "" 
+    
+    if 'iq_output_jd' not in st.session_state: st.session_state.iq_output_jd = ""
+    if 'interview_qa_jd' not in st.session_state: st.session_state.interview_qa_jd = [] 
+    if 'evaluation_report_jd' not in st.session_state: st.session_state.evaluation_report_jd = "" 
+    
+    st.markdown("---")
 
-    tab_resume, tab_jd = st.tabs(["👤 Resume Based Q&A", "💼 JD Based Q&A"])
+    tab_resume, tab_jd = st.tabs(["👤 Resume Based Q&A", "💼 JD Based Q&A"])
 
-    with tab_resume:
-        st.session_state.iq_mode = 'resume'
-        
-        if not is_resume_parsed:
-            st.warning("Please upload and successfully parse a resume first.")
-            # Return without further execution in this block if not parsed
-            if st.session_state.get('parsed', {}).get('error'):
-                 st.error(f"Parsing error: {st.session_state.parsed.get('error')}")
-            
-            return
+    with tab_resume:
+        st.session_state.iq_mode = 'resume'
+        
+        if not is_resume_parsed:
+            st.warning("Please upload and successfully parse a resume first.")
+            # Return without further execution in this block if not parsed
+            if st.session_state.get('parsed', {}).get('error'):
+                 st.error(f"Parsing error: {st.session_state.parsed.get('error')}")
+            
+            return
 
-        # Generate section options dynamically
-        parsed_keys = st.session_state.parsed.keys()
-        question_section_options = [k.replace('_', ' ').title() for k in parsed_keys if k not in ['name', 'email', 'phone', 'error', 'linkedin', 'github', 'personal_details']]
-        # Only sections with valid content
-        question_section_options = sorted([o for o in question_section_options if o and st.session_state.parsed.get(o.lower().replace(' ', '_')) and str(st.session_state.parsed.get(o.lower().replace(' ', '_'))).strip()])
+        # Generate section options dynamically
+        parsed_keys = st.session_state.parsed.keys()
+        question_section_options = [k.replace('_', ' ').title() for k in parsed_keys if k not in ['name', 'email', 'phone', 'error', 'linkedin', 'github', 'personal_details']]
+        # Only sections with valid content
+        question_section_options = sorted([o for o in question_section_options if o and st.session_state.parsed.get(o.lower().replace(' ', '_')) and str(st.session_state.parsed.get(o.lower().replace(' ', '_'))).strip()])
 
-        if not question_section_options:
-            st.error("No relevant sections (Experience, Skills, Projects) found in the parsed resume for question generation.")
-            return
-            
-        st.subheader("1. Generate Interview Questions (Resume)")
-        
-        section_choice = st.selectbox(
-            "Select Resume Section to Focus On", 
-            question_section_options, 
-            key='iq_section_resume_c',
-            on_change=lambda: clear_interview_state('resume')
-        )
-        
-        if st.button("Generate Resume Questions", key='iq_btn_resume_c', use_container_width=True):
-            with st.spinner("Generating questions based on resume section..."):
-                try:
-                    # Clear current mode state first
-                    clear_interview_state('resume')
+        if not question_section_options:
+            st.error("No relevant sections (Experience, Skills, Projects) found in the parsed resume for question generation.")
+            return
+            
+        st.subheader("1. Generate Interview Questions (Resume)")
+        
+        section_choice = st.selectbox(
+            "Select Resume Section to Focus On", 
+            question_section_options, 
+            key='iq_section_resume_c',
+            on_change=lambda: clear_interview_state('resume')
+        )
+        
+        if st.button("Generate Resume Questions", key='iq_btn_resume_c', use_container_width=True):
+            with st.spinner("Generating questions based on resume section..."):
+                try:
+                    # Clear current mode state first
+                    clear_interview_state('resume')
 
-                    # Call the unified generation function (Mode: resume)
-                    raw_questions_response = generate_interview_questions(
-                        source_data=st.session_state.parsed, 
-                        source_type='resume', 
-                        identifier=section_choice
-                    )
-                    
-                    if raw_questions_response.startswith("Error:"):
-                         st.error(raw_questions_response)
-                         st.session_state.iq_output_resume = raw_questions_response
-                         return
+                    # Call the unified generation function (Mode: resume)
+                    raw_questions_response = generate_interview_questions(
+                        source_data=st.session_state.parsed, 
+                        source_type='resume', 
+                        identifier=section_choice
+                    )
+                    
+                    if raw_questions_response.startswith("Error:"):
+                         st.error(raw_questions_response)
+                         st.session_state.iq_output_resume = raw_questions_response
+                         return
 
-                    st.session_state.iq_output_resume = raw_questions_response
-                    q_list = parse_questions_from_raw(raw_questions_response)
-                        
-                    st.session_state.interview_qa_resume = q_list
-                    
-                    if q_list:
-                        st.success(f"Generated {len(q_list)} questions based on your **{section_choice}** section.")
-                    else:
-                        st.warning(f"Could not parse any questions from the LLM response.")
-                    
-                except Exception as e:
-                    st.error(f"Error generating questions: {e}\nTrace: {traceback.format_exc()}")
-                    st.session_state.iq_output_resume = "Error generating questions."
-                    st.session_state.interview_qa_resume = []
-        
-        # Display/Evaluation Logic for Resume Mode
-        display_evaluation_form('resume', st.session_state.interview_qa_resume, st.session_state.full_text)
+                    st.session_state.iq_output_resume = raw_questions_response
+                    q_list = parse_questions_from_raw(raw_questions_response)
+                        
+                    st.session_state.interview_qa_resume = q_list
+                    
+                    if q_list:
+                        st.success(f"Generated {len(q_list)} questions based on your **{section_choice}** section.")
+                    else:
+                        st.warning(f"Could not parse any questions from the LLM response.")
+                    
+                except Exception as e:
+                    st.error(f"Error generating questions: {e}\nTrace: {traceback.format_exc()}")
+                    st.session_state.iq_output_resume = "Error generating questions."
+                    st.session_state.interview_qa_resume = []
+        
+        # Display/Evaluation Logic for Resume Mode
+        display_evaluation_form('resume', st.session_state.interview_qa_resume, st.session_state.full_text)
 
 
-    with tab_jd:
-        st.session_state.iq_mode = 'jd'
+    with tab_jd:
+        st.session_state.iq_mode = 'jd'
 
-        if not is_jd_loaded:
-            st.warning("Please load Job Descriptions in the 'JD Management' tab first.")
-            return
-            
-        st.subheader("1. Generate Interview Questions (JD)")
-        
-        jd_names = [jd.get('name') for jd in st.session_state.candidate_jd_list if jd.get('name')]
-        selected_jd_name = st.selectbox(
-            "Select Job Description",
-            options=jd_names,
-            key='iq_jd_name_c',
-            on_change=lambda: clear_interview_state('jd')
-        )
+        if not is_jd_loaded:
+            st.warning("Please load Job Descriptions in the 'JD Management' tab first.")
+            return
+            
+        st.subheader("1. Generate Interview Questions (JD)")
+        
+        jd_names = [jd.get('name') for jd in st.session_state.candidate_jd_list if jd.get('name')]
+        selected_jd_name = st.selectbox(
+            "Select Job Description",
+            options=jd_names,
+            key='iq_jd_name_c',
+            on_change=lambda: clear_interview_state('jd')
+        )
 
-        selected_jd = next((jd for jd in st.session_state.candidate_jd_list if jd.get('name') == selected_jd_name), None)
-        
-        if st.button("Generate JD Questions", key='iq_btn_jd_c', use_container_width=True):
-            if not selected_jd:
-                st.error("Please select a Job Description.")
-                return
+        selected_jd = next((jd for jd in st.session_state.candidate_jd_list if jd.get('name') == selected_jd_name), None)
+        
+        if st.button("Generate JD Questions", key='iq_btn_jd_c', use_container_width=True):
+            if not selected_jd:
+                st.error("Please select a Job Description.")
+                return
 
-            with st.spinner(f"Generating questions based on JD: {selected_jd_name}..."):
-                try:
-                    # Clear current mode state first
-                    clear_interview_state('jd')
-                    
-                    # Call the unified generation function (Mode: jd)
-                    raw_questions_response = generate_interview_questions(
-                        source_data=selected_jd.get('name', 'N/A'), 
-                        source_type='jd', 
-                        identifier=selected_jd.get('content', '')
-                    )
-                    
-                    if raw_questions_response.startswith("Error:"):
-                         st.error(raw_questions_response)
-                         st.session_state.iq_output_jd = raw_questions_response
-                         return
+            with st.spinner(f"Generating questions based on JD: {selected_jd_name}..."):
+                try:
+                    # Clear current mode state first
+                    clear_interview_state('jd')
+                    
+                    # Call the unified generation function (Mode: jd)
+                    raw_questions_response = generate_interview_questions(
+                        source_data=selected_jd.get('name', 'N/A'), 
+                        source_type='jd', 
+                        identifier=selected_jd.get('content', '')
+                    )
+                    
+                    if raw_questions_response.startswith("Error:"):
+                         st.error(raw_questions_response)
+                         st.session_state.iq_output_jd = raw_questions_response
+                         return
 
-                    st.session_state.iq_output_jd = raw_questions_response
-                    q_list = parse_questions_from_raw(raw_questions_response)
-                        
-                    st.session_state.interview_qa_jd = q_list
-                    
-                    if q_list:
-                        st.success(f"Generated {len(q_list)} questions based on **{selected_jd_name}**.")
-                    else:
-                        st.warning(f"Could not parse any questions from the LLM response.")
-                    
-                except Exception as e:
-                    st.error(f"Error generating questions: {e}\nTrace: {traceback.format_exc()}")
-                    st.session_state.iq_output_jd = "Error generating questions."
-                    st.session_state.interview_qa_jd = []
+                    st.session_state.iq_output_jd = raw_questions_response
+                    q_list = parse_questions_from_raw(raw_questions_response)
+                        
+                    st.session_state.interview_qa_jd = q_list
+                    
+                    if q_list:
+                        st.success(f"Generated {len(q_list)} questions based on **{selected_jd_name}**.")
+                    else:
+                        st.warning(f"Could not parse any questions from the LLM response.")
+                    
+                except Exception as e:
+                    st.error(f"Error generating questions: {e}\nTrace: {traceback.format_exc()}")
+                    st.session_state.iq_output_jd = "Error generating questions."
+                    st.session_state.interview_qa_jd = []
 
-        # Display/Evaluation Logic for JD Mode
-        display_evaluation_form('jd', st.session_state.interview_qa_jd, selected_jd.get('content', '') if selected_jd else "") 
+        # Display/Evaluation Logic for JD Mode
+        display_evaluation_form('jd', st.session_state.interview_qa_jd, selected_jd.get('content', '') if selected_jd else "")
+
 
 # --------------------------------------------------------------------------------------
 # NEW TAB: GAP ANALYSIS & COURSE PLAN
@@ -2816,34 +2599,15 @@ def chatbot_tab_content():
 # CANDIDATE DASHBOARD FUNCTION 
 # -------------------------
 
-def candidate_dashboard(go_to): # <-- ADD 'go_to' HERE 
-    
-    # 1. Define the Logout Callback Function
-    def logout():
-        # Clear specific session states related to login and redirect to 'login' page
-        st.session_state.logged_in = False
-        st.session_state.user_type = None
-        go_to("login")
-
-    # Set page config once at the start (usually done in the main app file)
+def candidate_dashboard():
+    # Set page config once at the start
     st.set_page_config(layout="wide", page_title="PragyanAI Candidate Dashboard")
     
-    # --- Dashboard Header and Logout Button ---
-    col_title, col_logout = st.columns([10, 1])
-    
-    with col_title:
-        st.title("🧑‍💻 Candidate Dashboard")
-    
-    with col_logout:
-        # 2. Place the Log Out Button
-        st.button("🚪 Logout", on_click=logout, type="secondary")
+    st.title("🧑‍💻 Candidate Dashboard")
             
     st.markdown("---")
 
     # --- Session State Initialization (Revised for new tab and persistence) ---
-    # NOTE: It is best practice to move this to a centralized initialize_session_state() function
-    # that runs only once at the start of the app, but we keep it here as per your request.
-    
     if "parsed" not in st.session_state: st.session_state.parsed = {} 
     if "full_text" not in st.session_state: st.session_state.full_text = ""
     if "excel_data" not in st.session_state: st.session_state.excel_data = None
@@ -2856,7 +2620,8 @@ def candidate_dashboard(go_to): # <-- ADD 'go_to' HERE
     if 'filtered_jds_display' not in st.session_state: st.session_state.filtered_jds_display = []
     if 'last_selected_skills' not in st.session_state: st.session_state.last_selected_skills = []
     if 'generated_cover_letter' not in st.session_state: st.session_state.generated_cover_letter = "" 
-    if 'cl_jd_name' not in st.session_state: st.session_state.cl_jd_name = ""
+    if 'cl_jd_name' not in st.session_state: st.session_state.cl_jd_name = "" 
+    
     # --- CV MANAGEMENT STATE (NEW) ---
     if 'cv_data' not in st.session_state: 
         st.session_state.cv_data = {
