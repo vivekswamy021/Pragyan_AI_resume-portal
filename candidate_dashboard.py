@@ -1187,38 +1187,53 @@ def cv_management_tab():
     # --- 1. Personal Info ---
     st.subheader("1. Personal Information")
     col_name, col_email, col_phone = st.columns(3)
+    
+    # 1.1 Name
     with col_name:
         st.session_state.cv_data['personal_info']['name'] = st.text_input(
             "Full Name", 
-            value=st.session_state.cv_data['personal_info']['name'], 
+            value=st.session_state.cv_data['personal_info'].get('name', ''), 
             key='cv_name'
         )
+    # 1.2 Email
     with col_email:
         st.session_state.cv_data['personal_info']['email'] = st.text_input(
             "Email", 
-            value=st.session_state.cv_data['personal_info']['email'], 
+            value=st.session_state.cv_data['personal_info'].get('email', ''), 
             key='cv_email'
         )
+    # 1.3 Phone
     with col_phone:
         st.session_state.cv_data['personal_info']['phone'] = st.text_input(
             "Phone Number", 
-            value=st.session_state.cv_data['personal_info']['phone'], 
+            value=st.session_state.cv_data['personal_info'].get('phone', ''), 
             key='cv_phone'
         )
+        
+    # 1.4 Communication Address (New Field)
+    st.session_state.cv_data['personal_info']['address'] = st.text_input(
+        "Communication Address (Optional)",
+        value=st.session_state.cv_data['personal_info'].get('address', ''),
+        key='cv_address'
+    )
     
     st.markdown("---")
 
     # --- 2. Education ---
     st.subheader("2. Education")
     with st.form("education_form", clear_on_submit=True):
-        col_deg, col_uni, col_fy, col_ty = st.columns([2, 2, 1, 1])
+        col_deg, col_uni, col_fy, col_ty, col_score = st.columns([2, 2, 1, 1, 1])
         with col_deg: degree = st.text_input("Degree/Qualification", key='edu_degree')
         with col_uni: university = st.text_input("University/Institution", key='edu_uni')
         with col_fy: year_from = st.text_input("From Year", key='edu_fy')
         with col_ty: year_to = st.text_input("To Year", key='edu_ty')
+        # New Field: Academic Scores
+        with col_score: score = st.text_input("Scores (GPA/%)", key='edu_score', help="e.g., 3.8/4.0 or 85%")
+        
         if st.form_submit_button("Add Education"):
             if degree and university:
-                entry = f"Degree: {degree}, Institution: {university} ({year_from}-{year_to})"
+                score_display = f", Score: {score}" if score else ""
+                entry = f"Degree: {degree}, Institution: {university} ({year_from}-{year_to}){score_display}"
                 st.session_state.cv_data['education'].append(entry)
                 st.success(f"Added: {entry}")
             else: st.error("Please enter Degree and University.")
@@ -1236,11 +1251,25 @@ def cv_management_tab():
         col_fy, col_ty = st.columns(2)
         with col_fy: year_from = st.text_input("From Year/Date", key='exp_fy')
         with col_ty: year_to = st.text_input("To Year/Date (or Present)", key='exp_ty')
-        description = st.text_area("Responsibilities/Achievements (Use bullet points)", key='exp_desc', height=100)
+        
+        # Separated Description Fields
+        responsibilities = st.text_area("Key Responsibilities (Use bullet points)", key='exp_resp', height=100)
+        achievements = st.text_area("Key Achievements/Metrics", key='exp_achiev', height=100)
+        
         if st.form_submit_button("Add Experience"):
             if company and role:
-                desc_formatted = description.replace('\n', ' | ').strip()
-                entry = f"Role: {role} at {company} (CTC: {ctc}) ({year_from}-{year_to}). Responsibilities: {desc_formatted}"
+                resp_formatted = responsibilities.replace('\n', ' | ').strip()
+                achiev_formatted = achievements.replace('\n', ' | ').strip()
+                
+                desc_parts = []
+                if resp_formatted:
+                    desc_parts.append(f"Responsibilities: {resp_formatted}")
+                if achiev_formatted:
+                    desc_parts.append(f"Achievements: {achiev_formatted}")
+                
+                description_text = ". ".join(desc_parts)
+
+                entry = f"Role: {role} at {company} (CTC: {ctc}) ({year_from}-{year_to}). {description_text}"
                 st.session_state.cv_data['experience'].append(entry)
                 st.success(f"Added: {role} at {company}")
             else: st.error("Please enter Company Name and Role.")
@@ -1286,11 +1315,11 @@ def cv_management_tab():
         st.dataframe(st.session_state.cv_data['certifications'], use_container_width=True, hide_index=True)
     st.markdown("---")
 
-    # --- 6. Strengths ---
-    st.subheader("6. Strengths")
+    # --- 6. Key Responsibilities, Expertise, or Leadership Skills (Renamed) ---
+    st.subheader("6. Key Responsibilities, Expertise, or Leadership Skills")
     st.session_state.cv_data['strengths_raw'] = st.text_area(
-        "Enter your key strengths (one per line)",
-        value=st.session_state.cv_data['strengths_raw'],
+        "Enter relevant expertise, core competencies, or soft/leadership skills (one per line)",
+        value=st.session_state.cv_data.get('strengths_raw', ''),
         key='cv_strengths_input',
         height=150
     )
@@ -1304,9 +1333,12 @@ def cv_management_tab():
         text = f"# Candidate Resume Data\n\n"
         
         # Personal Info
-        text += f"**Name**: {data['personal_info']['name']}\n"
-        text += f"**Email**: {data['personal_info']['email']}\n"
-        text += f"**Phone**: {data['personal_info']['phone']}\n\n"
+        text += f"**Name**: {data['personal_info'].get('name', '')}\n"
+        text += f"**Email**: {data['personal_info'].get('email', '')}\n"
+        text += f"**Phone**: {data['personal_info'].get('phone', '')}\n"
+        if data['personal_info'].get('address'):
+            text += f"**Address**: {data['personal_info']['address']}\n"
+        text += "\n"
         
         # Education
         text += "## Education\n"
@@ -1324,12 +1356,12 @@ def cv_management_tab():
         text += "## Certifications\n"
         if data['certifications']: text += "* " + "\n* ".join(data['certifications']) + "\n\n"
             
-        # Strengths
+        # Strengths/Skills (Renamed Section)
         strengths_raw_data = data.get('strengths_raw', '')
         if strengths_raw_data:
             strengths_list = [s.strip() for s in strengths_raw_data.split('\n') if s.strip()]
             if strengths_list:
-                text += "## Strengths\n"
+                text += "## Key Responsibilities, Expertise, or Leadership Skills\n"
                 text += "* " + "\n* ".join(strengths_list) + "\n\n"
             
         return text.strip()
@@ -1344,7 +1376,8 @@ def cv_management_tab():
         
         # Generate content for all formats
         markdown_text = st.session_state.form_cv_text
-        json_data = convert_to_json(st.session_state.cv_data)
+        # These functions MUST exist in your application code!
+        json_data = convert_to_json(st.session_state.cv_data) 
         html_content = convert_to_html_content(st.session_state.cv_data)
 
         # Create Tabs for viewing
@@ -1385,7 +1418,7 @@ def cv_management_tab():
 
     if st.button("🗑️ Clear All Form Data", key="clear_cv_form_data"):
         st.session_state.cv_data = {
-            'personal_info': {'name': '', 'email': '', 'phone': ''},
+            'personal_info': {'name': '', 'email': '', 'phone': '', 'address': ''}, # Added 'address'
             'education': [],
             'experience': [],
             'projects': [],
