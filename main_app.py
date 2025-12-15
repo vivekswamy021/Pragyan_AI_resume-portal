@@ -92,6 +92,7 @@ def render_profile_sidebar():
     with st.sidebar:
         # Dynamic Header with User Name
         st.header(f"👤 {st.session_state.user_name}")
+        # Display Role and Email
         st.caption(f"Role: {st.session_state.user_type.capitalize()} | Email: {st.session_state.user_email}")
         
         st.divider()
@@ -153,10 +154,6 @@ def render_profile_sidebar():
                 else:
                     st.warning("Please fill both fields.")
 
-        # --------------------------------------------------
-        # 🔥 LOGOUT BUTTON REMOVED HERE
-        # --------------------------------------------------
-
 
 # --------------------------------------------------
 # LOGIN PAGE
@@ -210,7 +207,7 @@ def login_page():
                         "Hiring Manager": "hiring"
                     }.get(role)
 
-                    # Extract Name from Email (Simple Logic)
+                    # Extract Name from Email (Simple Logic: "name@domain.com" -> "Name")
                     extracted_name = email.split("@")[0].capitalize()
 
                     st.session_state.logged_in = True
