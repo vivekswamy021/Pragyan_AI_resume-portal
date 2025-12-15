@@ -1,3 +1,4 @@
+#app.py
 import streamlit as st
 from admin_dashboard import admin_dashboard
 from candidate_dashboard import candidate_dashboard
