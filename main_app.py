@@ -1,4 +1,3 @@
-#app.py
 import streamlit as st
 from admin_dashboard import admin_dashboard
 from candidate_dashboard import candidate_dashboard
@@ -23,18 +22,23 @@ def show_logo(width=510):
 def go_to(page_name):
     st.session_state.page = page_name
 
+def handle_logout():
+    """Resets session state and redirects to login."""
+    st.session_state.logged_in = False
+    st.session_state.user_type = None
+    st.session_state.user_email = ""
+    st.session_state.user_name = ""
+    st.session_state.page = "login"
+    st.rerun()
+
 def initialize_session_state():
-
     if 'page' not in st.session_state: st.session_state.page = "login"
-
     if 'logged_in' not in st.session_state: st.session_state.logged_in = False
     if 'user_type' not in st.session_state: st.session_state.user_type = None
     if 'user_email' not in st.session_state: st.session_state.user_email = "" 
     if 'user_name' not in st.session_state: st.session_state.user_name = ""
 
-    # --------------------------------------------------
     # 👤 USER PROFILE DATA
-    # --------------------------------------------------
     if 'user_profile' not in st.session_state:
         st.session_state.user_profile = {
             "profile_pic": None,
@@ -89,23 +93,11 @@ def initialize_session_state():
 # --------------------------------------------------
 def render_profile_sidebar():
     with st.sidebar:
-        # Dynamic Header with User Name
         st.header(f"👤 {st.session_state.user_name}")
-        
-        # 🔥 HIGHLIGHTED ROLE AND EMAIL
-        st.markdown(
-            f"**Role:** {st.session_state.user_type.capitalize()}",
-            unsafe_allow_html=False
-        )
-        st.markdown(
-            f"**Email:** {st.session_state.user_email}",
-            unsafe_allow_html=False
-        )
-        
+        st.markdown(f"**Role:** {st.session_state.user_type.capitalize()}")
+        st.markdown(f"**Email:** {st.session_state.user_email}")
         st.divider()
 
-        # 1. Profile Picture
-        col_pic, col_upload = st.columns([1, 2])
         if st.session_state.user_profile["profile_pic"]:
             st.image(st.session_state.user_profile["profile_pic"], width=100)
         else:
@@ -119,8 +111,6 @@ def render_profile_sidebar():
             st.rerun()
 
         st.divider()
-
-        # 2. Edit Name Section (Direct Input)
         st.subheader("✏️ Profile Name")
         new_name = st.text_input("Display Name", value=st.session_state.user_name, label_visibility="collapsed")
         if st.button("Update Name"):
@@ -129,15 +119,9 @@ def render_profile_sidebar():
             st.rerun()
 
         st.divider()
-
-        # 3. Professional Links
         st.subheader("🔗 Professional Links")
-        
-        current_github = st.session_state.user_profile["github_link"]
-        current_linkedin = st.session_state.user_profile["linkedin_link"]
-
-        new_github = st.text_input("GitHub URL", value=current_github, placeholder="https://github.com/...")
-        new_linkedin = st.text_input("LinkedIn URL", value=current_linkedin, placeholder="https://linkedin.com/in/...")
+        new_github = st.text_input("GitHub URL", value=st.session_state.user_profile["github_link"], placeholder="https://github.com/...")
+        new_linkedin = st.text_input("LinkedIn URL", value=st.session_state.user_profile["linkedin_link"], placeholder="https://linkedin.com/in/...")
 
         if st.button("Save Links"):
             st.session_state.user_profile["github_link"] = new_github
@@ -145,83 +129,44 @@ def render_profile_sidebar():
             st.success("Links saved successfully!")
 
         st.divider()
-
-        # 4. Change Password
         with st.expander("🔐 Change Password"):
             new_pass = st.text_input("New Password", type="password")
             confirm_pass = st.text_input("Confirm New Password", type="password")
-            
             if st.button("Update Password"):
-                if new_pass and confirm_pass:
-                    if new_pass == confirm_pass:
-                        st.session_state.user_profile["password"] = new_pass
-                        st.success("Password changed!")
-                    else:
-                        st.error("Passwords do not match.")
+                if new_pass and confirm_pass and new_pass == confirm_pass:
+                    st.session_state.user_profile["password"] = new_pass
+                    st.success("Password changed!")
                 else:
-                    st.warning("Please fill both fields.")
+                    st.error("Check password match.")
 
 
 # --------------------------------------------------
-# LOGIN PAGE
+# LOGIN & SIGNUP PAGES
 # --------------------------------------------------
 
 def login_page():
-
     show_logo()
-
-    st.markdown(
-        """
-        <h1 style="font-size: 32px; font-weight: 700; margin-bottom: 10px;">
-            PragyanAI Job Portal
-        </h1>
-        """,
-        unsafe_allow_html=True
-    )
-
+    st.markdown('<h1 style="font-size: 32px; font-weight: 700; margin-bottom: 10px;">PragyanAI Job Portal</h1>', unsafe_allow_html=True)
     st.subheader("Login")
     col1, col2, col3 = st.columns([1, 2, 1])
 
     with col2:
         st.caption("Use any email/password. Select role: Candidate / Admin / Hiring Manager.")
-        
         with st.form("login_form", clear_on_submit=True):
-
-            st.markdown("Select Your Role")
-            role = st.selectbox(
-                "Select Role",
-                ["Select Role", "Candidate", "Admin", "Hiring Manager"],
-                label_visibility="collapsed"
-            )
-
-            st.markdown("Email")
+            role = st.selectbox("Select Role", ["Select Role", "Candidate", "Admin", "Hiring Manager"], label_visibility="collapsed")
             email = st.text_input("Email", placeholder="Enter email", label_visibility="collapsed")
-
-            st.markdown("Password")
             password = st.text_input("Password", type="password", placeholder="Enter password", label_visibility="collapsed")
-
             submitted = st.form_submit_button("Login")
 
             if submitted:
-                if role == "Select Role":
-                    st.error("Please select your role.")
-                elif not email or not password:
-                    st.error("Please enter both email and password.")
+                if role == "Select Role" or not email or not password:
+                    st.error("Please fill all fields.")
                 else:
-                    user_role = {
-                        "Candidate": "candidate",
-                        "Admin": "admin",
-                        "Hiring Manager": "hiring"
-                    }.get(role)
-
-                    # Extract Name from Email (Simple Logic: "name@domain.com" -> "Name")
-                    extracted_name = email.split("@")[0].capitalize()
-
+                    user_role = {"Candidate": "candidate", "Admin": "admin", "Hiring Manager": "hiring"}.get(role)
                     st.session_state.logged_in = True
                     st.session_state.user_type = user_role
                     st.session_state.user_email = email
-                    st.session_state.user_name = extracted_name
-                    
+                    st.session_state.user_name = email.split("@")[0].capitalize()
                     go_to(f"{user_role}_dashboard")
                     st.rerun()
 
@@ -229,50 +174,24 @@ def login_page():
             go_to("signup")
             st.rerun()
 
-
-# --------------------------------------------------
-# SIGNUP PAGE
-# --------------------------------------------------
-
 def signup_page():
-
     show_logo()
-
-    st.markdown(
-        """<h1 style="font-size: 30px; font-weight: 700;">Create an Account</h1>""",
-        unsafe_allow_html=True
-    )
-
+    st.markdown('<h1 style="font-size: 30px; font-weight: 700;">Create an Account</h1>', unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1, 2, 1])
-
     with col2:
         with st.form("signup_form"):
-
-            # Added Name field to signup for realism
-            st.markdown("Full Name")
-            full_name = st.text_input("Full Name", placeholder="Enter full name", label_visibility="collapsed")
-
-            st.markdown("Email")
-            email = st.text_input("Email", placeholder="Enter email", label_visibility="collapsed")
-
-            st.markdown("Password")
-            password = st.text_input("Password", type="password", placeholder="Enter password", label_visibility="collapsed")
-
-            st.markdown("Confirm Password")
-            confirm_password = st.text_input("Confirm", type="password", placeholder="Confirm password", label_visibility="collapsed")
-
+            full_name = st.text_input("Full Name", placeholder="Enter full name")
+            email = st.text_input("Email", placeholder="Enter email")
+            password = st.text_input("Password", type="password")
+            confirm_password = st.text_input("Confirm", type="password")
             submitted = st.form_submit_button("Sign Up")
-
             if submitted:
-                if not email or not password or not confirm_password:
-                    st.error("Fill all fields.")
-                elif password != confirm_password:
-                    st.error("Passwords do not match.")
-                else:
-                    st.success(f"Account created for {full_name or email}! Please log in.")
+                if password == confirm_password and email:
+                    st.success("Account created! Please log in.")
                     go_to("login")
                     st.rerun()
-
+                else:
+                    st.error("Check details.")
         if st.button("Already have an account? Login here"):
             go_to("login")
             st.rerun()
@@ -284,30 +203,37 @@ def signup_page():
 
 if __name__ == '__main__':
     st.set_page_config(layout="wide", page_title="PragyanAI App")
-
     initialize_session_state()
 
-    current_page = st.session_state.page
-
     if st.session_state.logged_in:
-        
-        # RENDER SIDEBAR with Profile options
         render_profile_sidebar()
+        show_logo()
+        
+        # --- COMMON HEADER SECTION (Log Out Button) ---
+        # This mirrors the UI in your screenshot
+        role_display = st.session_state.user_type.capitalize()
+        if st.session_state.user_type == "hiring": role_display = "Hiring Manager"
+        
+        st.markdown(f'# 👨‍💼 {role_display} Dashboard')
+        st.caption(f"Logged in as: **{st.session_state.user_name}**")
+        
+        if st.button("🚪 Log Out"):
+            handle_logout()
+        
+        st.divider()
 
+        # --- ROUTING TO DASHBOARDS ---
         if st.session_state.user_type == "admin":
-            show_logo()
             admin_dashboard(go_to)
 
         elif st.session_state.user_type == "candidate":
-            show_logo()
             candidate_dashboard(go_to)
 
         elif st.session_state.user_type == "hiring":
-            show_logo()
             hiring_dashboard(go_to)
 
     else:
-        if current_page == "signup":
+        if st.session_state.page == "signup":
             signup_page()
         else:
-            login_page() 
+            login_page()
